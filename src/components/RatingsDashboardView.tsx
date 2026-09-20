@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { subDays, format } from 'date-fns';
 import { SpaceRating, Reservation } from '../types';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
+import { getPhoneContactActions } from '../utils/phoneUtils';
 import {
   generateMondayEmailReport,
   isEligibleForRating,
@@ -258,9 +259,31 @@ export const RatingsDashboardView: React.FC<RatingsDashboardViewProps> = ({
                         <span className="font-medium text-slate-700">Solicitante: {res.responsable}</span>
                         <span className="font-mono text-slate-500">{res.horaInicio} - {res.horaFin}</span>
                       </div>
-                      {res.telefonoContacto && (
-                        <div className="text-[10px] text-slate-500 font-mono">📞 {res.telefonoContacto}</div>
-                      )}
+                      {res.telefonoContacto && (() => {
+                        const phoneAction = getPhoneContactActions(res.telefonoContacto);
+                        if (!phoneAction) return <div className="text-[10px] text-slate-500 font-mono">📞 {res.telefonoContacto}</div>;
+                        return (
+                          <div className="flex items-center space-x-1.5 text-[10px] font-mono">
+                            <a
+                              href={phoneAction.telHref}
+                              className="text-blue-600 hover:text-blue-800 hover:underline flex items-center space-x-1"
+                              title="Llamar"
+                            >
+                              <span>📞</span>
+                              <span>{res.telefonoContacto}</span>
+                            </a>
+                            <a
+                              href={phoneAction.waHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-1 py-0.2 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                              title="WhatsApp"
+                            >
+                              WA
+                            </a>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <button
@@ -352,9 +375,31 @@ export const RatingsDashboardView: React.FC<RatingsDashboardViewProps> = ({
                       <div className="space-y-1">
                         <div className="flex items-center space-x-2">
                           <span className="font-bold text-slate-900 text-sm">{rating.responsable}</span>
-                          {rating.telefonoContacto && (
-                            <span className="text-[11px] font-mono text-slate-500">📞 {rating.telefonoContacto}</span>
-                          )}
+                          {rating.telefonoContacto && (() => {
+                            const phoneAction = getPhoneContactActions(rating.telefonoContacto);
+                            if (!phoneAction) return <span className="text-[11px] font-mono text-slate-500">📞 {rating.telefonoContacto}</span>;
+                            return (
+                              <div className="flex items-center space-x-1.5">
+                                <a
+                                  href={phoneAction.telHref}
+                                  className="text-[11px] font-mono text-blue-600 hover:text-blue-800 hover:underline flex items-center space-x-1"
+                                  title="Llamar"
+                                >
+                                  <span>📞</span>
+                                  <span>{rating.telefonoContacto}</span>
+                                </a>
+                                <a
+                                  href={phoneAction.waHref}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-1 py-0.2 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                                  title="WhatsApp"
+                                >
+                                  WA
+                                </a>
+                              </div>
+                            );
+                          })()}
                           <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full border border-amber-300 flex items-center space-x-1">
                             <Cake className="w-3 h-3 text-amber-700" />
                             <span>Cumpleaños</span>

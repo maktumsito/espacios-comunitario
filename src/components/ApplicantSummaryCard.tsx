@@ -7,6 +7,7 @@ import {
   Mail,
   ChevronRight
 } from 'lucide-react';
+import { getPhoneContactActions } from '../utils/phoneUtils';
 
 interface ApplicantSummaryCardProps {
   applicant: ApplicantSummary;
@@ -34,11 +35,23 @@ export const ApplicantSummaryCard: React.FC<ApplicantSummaryCardProps> = ({
   onSelect
 }) => {
   const hasCritical = applicant.incidentesCount > 0;
+  const phoneAction = getPhoneContactActions(applicant.telefonoContacto);
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Ver ficha de solicitante de ${applicant.responsable}`}
+      aria-pressed={isSelected}
       onClick={() => onSelect(applicant)}
-      className={`bg-white border rounded-2xl p-4 transition shadow-2xs hover:shadow-md cursor-pointer ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (e.target !== e.currentTarget) return;
+          e.preventDefault();
+          onSelect(applicant);
+        }
+      }}
+      className={`w-full text-left bg-white border rounded-2xl p-4 transition shadow-2xs hover:shadow-md cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${
         isSelected
           ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20'
           : hasCritical
@@ -73,11 +86,30 @@ export const ApplicantSummaryCard: React.FC<ApplicantSummaryCardProps> = ({
 
           {/* Contact metadata */}
           <div className="flex items-center space-x-3 text-xs text-slate-500 mt-1.5 flex-wrap gap-y-1">
-            {applicant.telefonoContacto && (
-              <span className="flex items-center space-x-1">
-                <Phone className="w-3 h-3 text-slate-400" />
-                <span>{applicant.telefonoContacto}</span>
-              </span>
+            {phoneAction && (
+              <div
+                className="flex items-center space-x-1.5"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <a
+                  href={phoneAction.telHref}
+                  title={`Llamar al ${applicant.telefonoContacto}`}
+                  className="flex items-center space-x-1 text-slate-600 hover:text-blue-600 font-medium hover:underline transition"
+                >
+                  <Phone className="w-3 h-3 text-slate-400 hover:text-blue-600" />
+                  <span>{applicant.telefonoContacto}</span>
+                </a>
+                <a
+                  href={phoneAction.waHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Enviar mensaje por WhatsApp"
+                  className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition"
+                >
+                  WhatsApp
+                </a>
+              </div>
             )}
             {applicant.emailContacto && (
               <span className="flex items-center space-x-1">

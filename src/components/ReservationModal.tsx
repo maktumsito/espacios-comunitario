@@ -638,16 +638,13 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
         indiceEnSerie: isCopy ? undefined : editingReservation.indiceEnSerie,
         totalEnSerie: isCopy ? undefined : editingReservation.totalEnSerie,
         terminaDiaSiguiente: initialMidnight,
-        horarioExtendidoAutorizado: editingReservation.horarioExtendidoAutorizado || false,
-        claveAutorizacion: editingReservation.claveAutorizacion || '',
+        horarioExtendidoAutorizado: false,
+        claveAutorizacion: '',
         autorizadoPor: editingReservation.autorizadoPor || '',
         equipamientoSolicitado: clonedEquip
       });
-      if (editingReservation.horarioExtendidoAutorizado && !isClearlyNormalDaytime) {
-        setExtendedAuthKey(editingReservation.claveAutorizacion || 'ccd2026');
-      } else {
-        setExtendedAuthKey('');
-      }
+      // Inicia bloqueado por defecto para requerir validación estricta de clave ccd2026
+      setExtendedAuthKey('');
       setGenerateFullSeries(isCopy ? true : false);
       setAllowConflictOverride(false);
       setUpdateScope('single');
@@ -1102,13 +1099,10 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
   const isExtensionAuthorized = useMemo(() => {
     if (!loanScheduleCheck.requiresAuthorization) return true;
-    const keyMatches =
-      extendedAuthKey.trim().toLowerCase() === EXTENSION_AUTH_KEY.toLowerCase() ||
-      Boolean(formData.horarioExtendidoAutorizado);
-    const isAuthRole = isCoordinatorOrAdmin(currentUser);
-    // Either entering official key ccd2026, or having coordinator/admin role, or already marked as authorized
-    return keyMatches || isAuthRole;
-  }, [loanScheduleCheck.requiresAuthorization, currentUser, extendedAuthKey, formData.horarioExtendidoAutorizado]);
+    // Strict real validation: extendedAuthKey must explicitly match EXTENSION_AUTH_KEY ('ccd2026').
+    // Starts locked by default; empty key or admin profile alone does NOT unlock without entering the key.
+    return extendedAuthKey.trim().toLowerCase() === EXTENSION_AUTH_KEY.toLowerCase();
+  }, [loanScheduleCheck.requiresAuthorization, extendedAuthKey]);
 
   const descriptionValidation = useMemo(() => {
     return validateActivityDescription(formData.descripcion, MAX_ACTIVITY_DESCRIPTION_LENGTH);
@@ -1897,7 +1891,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     // Extended schedule authorization check
     if (loanScheduleCheck.requiresAuthorization && !isExtensionAuthorized) {
       if (showAlert) {
-        showFormFeedback('⚠️ Autorización requerida: La actividad opera en horario extendido (antes de las 08:30 hrs o después de las 22:00 hrs). Ingresa la clave oficial "ccd2026" para autorizarla o ingresa con perfil de Administrador / Coordinador.', 'warning');
+        showFormFeedback('⚠️ Autorización requerida: La actividad opera en horario extendido (antes de las 08:30 hrs o después de las 22:00 hrs). Ingresa la clave oficial "ccd2026" para autorizarla.', 'warning');
       }
       return false;
     }
@@ -2153,7 +2147,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
     if (loanScheduleCheck.requiresAuthorization) {
       if (!isExtensionAuthorized) {
-        abortWithFeedback('⚠️ Autorización requerida: La actividad opera en horario extendido (antes de las 08:30 hrs o después de las 22:00 hrs). Ingresa la clave oficial "ccd2026" para autorizarla o ingresa con perfil de Administrador / Coordinador.');
+        abortWithFeedback('⚠️ Autorización requerida: La actividad opera en horario extendido (antes de las 08:30 hrs o después de las 22:00 hrs). Ingresa la clave oficial "ccd2026" para autorizarla.');
         return;
       }
     }

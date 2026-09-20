@@ -8,6 +8,7 @@ import {
   ApplicantActivityCategory
 } from '../services/applicantDirectoryService';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
+import { getPhoneContactActions } from '../utils/phoneUtils';
 import { ApplicantSummaryCard } from './ApplicantSummaryCard';
 import {
   Users,
@@ -412,12 +413,42 @@ export const ApplicantDirectoryView: React.FC<ApplicantDirectoryViewProps> = ({
 
               {/* Contact card */}
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2 text-xs">
-                {selectedApplicant.telefonoContacto && (
-                  <div className="flex items-center space-x-2 text-slate-700">
-                    <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span className="font-semibold">{selectedApplicant.telefonoContacto}</span>
-                  </div>
-                )}
+                {(() => {
+                  const phoneAction = getPhoneContactActions(selectedApplicant.telefonoContacto);
+                  if (!phoneAction) return null;
+                  return (
+                    <div className="flex items-center justify-between gap-2 p-2 bg-white rounded-lg border border-slate-200">
+                      <div className="flex items-center space-x-2 text-slate-700 min-w-0">
+                        <Phone className="w-4 h-4 text-blue-600 shrink-0" />
+                        <a
+                          href={phoneAction.telHref}
+                          className="font-semibold text-slate-800 hover:text-blue-700 hover:underline transition truncate"
+                          title={`Llamar a ${selectedApplicant.responsable} (${selectedApplicant.telefonoContacto})`}
+                        >
+                          {selectedApplicant.telefonoContacto}
+                        </a>
+                      </div>
+                      <div className="flex items-center space-x-1.5 shrink-0">
+                        <a
+                          href={phoneAction.telHref}
+                          className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md font-bold text-[11px] transition flex items-center space-x-1"
+                          title="Llamar directamente por teléfono"
+                        >
+                          <span>Llamar</span>
+                        </a>
+                        <a
+                          href={phoneAction.waHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-md font-bold text-[11px] transition flex items-center space-x-1"
+                          title="Enviar mensaje por WhatsApp"
+                        >
+                          <span>WhatsApp</span>
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {selectedApplicant.emailContacto && (
                   <div className="flex items-center space-x-2 text-slate-700">
                     <Mail className="w-4 h-4 text-slate-400 shrink-0" />
@@ -471,8 +502,17 @@ export const ApplicantDirectoryView: React.FC<ApplicantDirectoryViewProps> = ({
                     return (
                       <div
                         key={res.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Ver detalles de la reserva del ${formatDateDDMMYYYY(res.fecha)}: ${res.espacio}`}
                         onClick={() => onSelectReservation && onSelectReservation(res)}
-                        className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs hover:bg-slate-50 hover:border-blue-300 cursor-pointer transition flex items-center justify-between"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSelectReservation && onSelectReservation(res);
+                          }
+                        }}
+                        className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs hover:bg-slate-50 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition flex items-center justify-between"
                       >
                         <div className="min-w-0 flex-1 pr-2">
                           <div className="flex items-center space-x-1.5 flex-wrap gap-y-0.5">

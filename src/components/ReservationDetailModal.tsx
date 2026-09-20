@@ -23,6 +23,7 @@ import {
   Ban
 } from 'lucide-react';
 import { CommitmentLetterModal } from './CommitmentLetterModal';
+import { getPhoneContactActions } from '../utils/phoneUtils';
 import { CommitmentLetterCard } from './CommitmentLetterCard';
 import { isCommitmentLetterEligible } from '../utils/commitmentLetterPdf';
 import { checkLoanScheduleLimit } from '../utils/validationUtils';
@@ -390,9 +391,33 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
               <span>Responsable</span>
             </div>
             <div className="font-bold text-slate-900 truncate">{reservation.responsable}</div>
-            {reservation.telefonoContacto && (
-              <div className="text-[11px] text-slate-600 font-medium">📞 {reservation.telefonoContacto}</div>
-            )}
+            {reservation.telefonoContacto && (() => {
+              const phoneAction = getPhoneContactActions(reservation.telefonoContacto);
+              if (!phoneAction) {
+                return <div className="text-[11px] text-slate-600 font-medium">📞 {reservation.telefonoContacto}</div>;
+              }
+              return (
+                <div className="flex items-center space-x-1.5 pt-0.5">
+                  <a
+                    href={phoneAction.telHref}
+                    title="Llamar directamente por teléfono"
+                    className="text-[11px] text-blue-700 hover:text-blue-900 font-semibold hover:underline flex items-center space-x-1"
+                  >
+                    <span>📞</span>
+                    <span>{reservation.telefonoContacto}</span>
+                  </a>
+                  <a
+                    href={phoneAction.waHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Enviar mensaje por WhatsApp"
+                    className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200"
+                  >
+                    WhatsApp
+                  </a>
+                </div>
+              );
+            })()}
             {reservation.emailContacto && (
               <div className="text-[11px] text-slate-600 truncate">✉️ {reservation.emailContacto}</div>
             )}

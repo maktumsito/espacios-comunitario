@@ -62,6 +62,17 @@ export interface RecurringSeriesGroup {
   sesionesPasadas: number;
 }
 
+/**
+ * Formats session counts with accurate singular and plural Spanish grammar:
+ * e.g. "(1 sesión: 1 futura, 0 pasadas)" or "(5 sesiones: 3 futuras, 2 pasadas)"
+ */
+export function formatSessionCounts(total: number, futuras: number, pasadas: number): string {
+  const totalText = total === 1 ? '1 sesión' : `${total} sesiones`;
+  const futurasText = futuras === 1 ? '1 futura' : `${futuras} futuras`;
+  const pasadasText = pasadas === 1 ? '1 pasada' : `${pasadas} pasadas`;
+  return `(${totalText}: ${futurasText}, ${pasadasText})`;
+}
+
 interface AdminRecurringViewProps {
   reservations: Reservation[];
   spaces: SpaceInfo[];
@@ -357,7 +368,7 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
       const success = await onSaveReservation(updatedReserva, false, allSlots, true);
 
       if (success !== false) {
-        setModifySuccess(`¡Fecha término actualizada con éxito! La serie ahora se repite hasta el ${formatDateDDMMYYYY(newEndDate)} (${allSlots.length} sesiones en total).`);
+        setModifySuccess(`¡Fecha término actualizada con éxito! La serie ahora se repite hasta el ${formatDateDDMMYYYY(newEndDate)} (${allSlots.length} ${allSlots.length === 1 ? 'sesión' : 'sesiones'} en total).`);
         setTimeout(() => {
           setModifyingSeries(null);
         }, 1500);
@@ -695,7 +706,7 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
                       </div>
 
                       <span className="text-[11px] text-slate-500 font-medium">
-                        ({series.totalSesiones} sesiones: {series.sesionesFuturas} futuras, {series.sesionesPasadas} pasadas)
+                        {formatSessionCounts(series.totalSesiones, series.sesionesFuturas, series.sesionesPasadas)}
                       </span>
                     </div>
                   </div>
@@ -742,7 +753,7 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
                       <button
                         type="button"
                         onClick={async () => {
-                          if (confirm(`¿Estás seguro de eliminar la serie recurrente completa de "${series.tipoActividad}" (${series.totalSesiones} sesiones)? Esta acción cancelará todas las fechas programadas.`)) {
+                          if (confirm(`¿Estás seguro de eliminar la serie recurrente completa de "${series.tipoActividad}" (${series.totalSesiones} ${series.totalSesiones === 1 ? 'sesión' : 'sesiones'})? Esta acción cancelará todas las fechas programadas.`)) {
                             await onDeleteReservation(series.reservations[0].id, series.seriesId);
                           }
                         }}
@@ -928,7 +939,7 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
                     <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs space-y-2">
                       <div className="flex items-center space-x-1.5 text-emerald-900 font-bold">
                         <CalendarPlus className="w-4 h-4 text-emerald-600" />
-                        <span>Se extenderá la serie en {modifyPreview.count} nuevas sesiones</span>
+                        <span>Se extenderá la serie en {modifyPreview.count} {modifyPreview.count === 1 ? 'nueva sesión' : 'nuevas sesiones'}</span>
                       </div>
                       <p className="text-[11px] text-emerald-800">
                         La actividad continuará repitiéndose hasta el <strong>{formatDateDDMMYYYY(newEndDate)}</strong>.
@@ -952,7 +963,7 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
                     <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1">
                       <div className="flex items-center space-x-1.5 text-rose-900 font-bold">
                         <AlertTriangle className="w-4 h-4 text-rose-600" />
-                        <span>Se recortará la serie ({modifyPreview.count} sesiones posteriores al {formatDateDDMMYYYY(newEndDate)} serán canceladas)</span>
+                        <span>Se recortará la serie ({modifyPreview.count} {modifyPreview.count === 1 ? 'sesión posterior' : 'sesiones posteriores'} al {formatDateDDMMYYYY(newEndDate)} serán canceladas)</span>
                       </div>
                       <p className="text-[11px] text-rose-800">
                         Las sesiones programadas con fecha posterior al nuevo término serán eliminadas de la programación.
@@ -1237,7 +1248,7 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
                 {/* Preview summary */}
                 <div className="pt-1 flex items-center justify-between text-xs">
                   <span className="font-bold text-blue-900">
-                    Total a generar: {newSeriesDatesPreview.length} sesiones
+                    Total a generar: {newSeriesDatesPreview.length} {newSeriesDatesPreview.length === 1 ? 'sesión' : 'sesiones'}
                   </span>
                   {newSeriesConflicts.length > 0 ? (
                     <span className="font-bold text-rose-600 flex items-center space-x-1">

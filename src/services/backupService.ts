@@ -99,6 +99,18 @@ export function formatLocalDateString(date: Date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * Generates a deterministic signature to identify duplicate backups having
+ * identical date, time (HH:mm), size (in KB), and count of reservations.
+ */
+export function getBackupIdentitySignature(meta: DatabaseBackupMetadata): string {
+  const fecha = meta.fecha || (meta.timestamp ? meta.timestamp.slice(0, 10) : '');
+  const hora = meta.timestamp ? meta.timestamp.slice(11, 16) : '';
+  const sizeKb = Math.round((meta.tamanoBytes || 0) / 1024);
+  const total = meta.totalReservas || 0;
+  return `${fecha}_${hora}_${sizeKb}KB_${total}RSV`;
+}
+
 export function calculateNextBackupDate(lastTimestamp: number, intervalDays: number = DEFAULT_BACKUP_INTERVAL_DAYS): string {
   if (!lastTimestamp) {
     return 'Hoy (Pendiente)';
@@ -274,6 +286,19 @@ export async function createDatabaseBackup(options: CreateBackupOptions = {}): P
   const cleanDateForId = dateStr.replace(/-/g, '');
   const timeSuffix = now.toTimeString().slice(0, 8).replace(/:/g, '');
   const id = `BACKUP_${cleanDateForId}_${timeSuffix}_${tipo === 'automatica_15_dias' ? 'AUTO15D' : 'MANUAL'}`;
+
+  // Idempotency check: if an identical backup was already created (same date, minute, size KB, and reservations count), reuse it
+  const candidateSig = `${dateStr}_${isoStr.slice(11, 16)}_${Math.round(tamanoBytes / 1024)}KB_${reservations.length}RSV`;
+  const localHistory = getLocalBackupHistory();
+  const existingDuplicate = localHistory.find(b => getBackupIdentitySignature(b) === candidateSig);
+
+  if (existingDuplicate) {
+    console.log(`[BackupService] Respaldo idéntico detectado (${existingDuplicate.id}, ${candidateSig}), omitiendo creación duplicada por idempotencia.`);
+    return {
+      ...existingDuplicate,
+      data: backupData
+    };
+  }
 
   const defaultDesc = tipo === 'automatica_15_dias'
     ? `Copia de seguridad automática periódica (ciclo cada 15 días) con ${reservations.length} reservas y catálogos completos`
@@ -509,15 +534,12 @@ export async function getDatabaseBackupsList(): Promise<DatabaseBackupMetadata[]
   const list = Array.from(map.values());
   list.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
-  // Deduplicate entries that share identical checksum or identical minute + totalReservas + tamanoBytes
+  // Deduplicate entries that share identical signature (misma fecha, hora, tamaño KB y cantidad de reservas)
   const deduplicated: DatabaseBackupMetadata[] = [];
   const signatureMap = new Map<string, DatabaseBackupMetadata>();
 
   for (const item of list) {
-    const minuteStr = item.timestamp ? item.timestamp.slice(0, 16) : item.fecha;
-    const signature = item.checksum
-      ? `CHK_${item.checksum}`
-      : `SIG_${minuteStr}_${item.totalReservas}_${item.tamanoBytes}`;
+    const signature = getBackupIdentitySignature(item);
 
     const existing = signatureMap.get(signature);
     if (!existing) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Reservation } from '../types';
 import { exportToCsv } from '../utils/csvExportImport';
 import { parseCsvRows } from '../utils/csvParser';
@@ -17,7 +17,8 @@ import {
   DatabaseBackupMetadata,
   DatabaseBackupRecord,
   calculateNextBackupDate,
-  getDaysUntilNextBackup
+  getDaysUntilNextBackup,
+  getBackupIdentitySignature
 } from '../services/backupService';
 import {
   X,
@@ -640,22 +641,40 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                 </button>
               </div>
 
-              {isLoadingBackups ? (
-                <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-slate-200">
-                  <RefreshCw className="w-5 h-5 animate-spin mx-auto text-blue-500 mb-1" />
-                  <span>Cargando lista de copias de seguridad...</span>
-                </div>
-              ) : backupList.length === 0 ? (
-                <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200 space-y-1">
-                  <ShieldCheck className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
-                  <p className="font-semibold text-slate-700">Aún no hay copias de seguridad registradas</p>
-                  <p className="text-[11px] text-slate-400">
-                    El sistema creará la primera copia automáticamente en segundo plano o puedes pulsar "Crear Copia de Seguridad Ahora".
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {backupList.map((backup) => (
+              {(() => {
+                // Deduplicación reactiva garantizada: evita mostrar respaldos idénticos (misma fecha, hora, tamaño y cantidad de reservas)
+                const seenKeys = new Set<string>();
+                const deduplicatedBackups = backupList.filter((b) => {
+                  const sig = getBackupIdentitySignature(b);
+                  if (seenKeys.has(sig)) return false;
+                  seenKeys.add(sig);
+                  return true;
+                });
+
+                if (isLoadingBackups) {
+                  return (
+                    <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-slate-200">
+                      <RefreshCw className="w-5 h-5 animate-spin mx-auto text-blue-500 mb-1" />
+                      <span>Cargando lista de copias de seguridad...</span>
+                    </div>
+                  );
+                }
+
+                if (deduplicatedBackups.length === 0) {
+                  return (
+                    <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200 space-y-1">
+                      <ShieldCheck className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
+                      <p className="font-semibold text-slate-700">Aún no hay copias de seguridad registradas</p>
+                      <p className="text-[11px] text-slate-400">
+                        El sistema creará la primera copia automáticamente en segundo plano o puedes pulsar "Crear Copia de Seguridad Ahora".
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {deduplicatedBackups.map((backup) => (
                     <div
                       key={backup.id}
                       className="p-3 bg-white rounded-xl border border-slate-200 hover:border-slate-300 shadow-2xs flex items-center justify-between gap-3 text-xs transition"
@@ -730,7 +749,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                     </div>
                   ))}
                 </div>
-              )}
+              );
+            })()}
             </div>
           </div>
         )}
