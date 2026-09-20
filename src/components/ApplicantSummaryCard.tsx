@@ -1,0 +1,128 @@
+import React from 'react';
+import { ApplicantSummary } from '../types';
+import {
+  Star,
+  AlertTriangle,
+  Phone,
+  Mail,
+  ChevronRight
+} from 'lucide-react';
+
+interface ApplicantSummaryCardProps {
+  applicant: ApplicantSummary;
+  isSelected: boolean;
+  onSelect: (applicant: ApplicantSummary) => void;
+}
+
+function getActivityBadgeStyle(cat: string) {
+  switch (cat) {
+    case 'PRÉSTAMO':
+      return 'bg-blue-50 text-blue-700 border-blue-200';
+    case 'ENSAYO':
+      return 'bg-purple-50 text-purple-700 border-purple-200';
+    case 'CUMPLEAÑOS':
+      return 'bg-pink-50 text-pink-700 border-pink-200';
+    case 'OTROS':
+    default:
+      return 'bg-slate-100 text-slate-700 border-slate-200';
+  }
+}
+
+export const ApplicantSummaryCard: React.FC<ApplicantSummaryCardProps> = ({
+  applicant,
+  isSelected,
+  onSelect
+}) => {
+  const hasCritical = applicant.incidentesCount > 0;
+
+  return (
+    <div
+      onClick={() => onSelect(applicant)}
+      className={`bg-white border rounded-2xl p-4 transition shadow-2xs hover:shadow-md cursor-pointer ${
+        isSelected
+          ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20'
+          : hasCritical
+          ? 'border-rose-200 hover:border-rose-300'
+          : 'border-slate-200 hover:border-slate-300'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+            <h2 className="font-bold text-sm sm:text-base text-slate-900 truncate">
+              {applicant.responsable}
+            </h2>
+            {applicant.rut && (
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                {applicant.rut}
+              </span>
+            )}
+            {hasCritical && (
+              <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                <span>{applicant.incidentesCount} incidente(s)</span>
+              </span>
+            )}
+            {applicant.promedioCalificacion && applicant.promedioCalificacion >= 4.5 && (
+              <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                <span>{applicant.promedioCalificacion.toFixed(1)}/5</span>
+              </span>
+            )}
+          </div>
+
+          {/* Contact metadata */}
+          <div className="flex items-center space-x-3 text-xs text-slate-500 mt-1.5 flex-wrap gap-y-1">
+            {applicant.telefonoContacto && (
+              <span className="flex items-center space-x-1">
+                <Phone className="w-3 h-3 text-slate-400" />
+                <span>{applicant.telefonoContacto}</span>
+              </span>
+            )}
+            {applicant.emailContacto && (
+              <span className="flex items-center space-x-1">
+                <Mail className="w-3 h-3 text-slate-400" />
+                <span>{applicant.emailContacto}</span>
+              </span>
+            )}
+          </div>
+
+          {/* Activity Category Tags */}
+          {applicant.tiposActividad && applicant.tiposActividad.length > 0 && (
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              {applicant.tiposActividad.map((tipo) => (
+                <span
+                  key={tipo}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${getActivityBadgeStyle(tipo)}`}
+                >
+                  {tipo === 'PRÉSTAMO' && 'Préstamo'}
+                  {tipo === 'ENSAYO' && 'Ensayo'}
+                  {tipo === 'CUMPLEAÑOS' && 'Cumpleaños'}
+                  {tipo === 'OTROS' && 'Otros'}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <ChevronRight className={`w-5 h-5 text-slate-400 transition-transform ${isSelected ? 'rotate-90 text-blue-600' : ''}`} />
+      </div>
+
+      {/* Summary Metric Pills */}
+      <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-100 text-center">
+        <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+          <span className="text-[10px] text-slate-500 block">Total Solicitudes</span>
+          <strong className="text-xs text-slate-800 font-black">{applicant.totalReservas}</strong>
+        </div>
+        <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+          <span className="text-[10px] text-slate-500 block">Horas Acumuladas</span>
+          <strong className="text-xs text-emerald-700 font-black">{applicant.totalHorasUsadas} hrs</strong>
+        </div>
+        <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+          <span className="text-[10px] text-slate-500 block">Cartas Adjuntas</span>
+          <strong className="text-xs text-indigo-700 font-black">{applicant.cartasAdjuntasCount}</strong>
+        </div>
+      </div>
+    </div>
+  );
+};

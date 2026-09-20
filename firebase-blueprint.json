@@ -1,0 +1,287 @@
+{
+  "entities": {
+    "Reserva": {
+      "title": "Reserva",
+      "description": "Registro de reserva o uso de espacio comunitario, con soporte para recurrencias, cartas de compromiso, equipamiento y solicitudes de eliminación",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fecha": { "type": "string", "maxLength": 10, "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "horaInicio": { "type": "string", "maxLength": 5, "pattern": "^\\d{2}:\\d{2}$" },
+        "horaFin": { "type": "string", "maxLength": 5, "pattern": "^\\d{2}:\\d{2}$" },
+        "espacio": { "type": "string", "maxLength": 150 },
+        "responsable": { "type": "string", "maxLength": 200 },
+        "telefonoContacto": { "type": "string", "maxLength": 50 },
+        "emailContacto": { "type": "string", "maxLength": 150 },
+        "tipoActividad": { "type": "string", "maxLength": 100 },
+        "tipoPrestamo": { "type": "string", "maxLength": 100 },
+        "descripcion": { "type": "string", "maxLength": 2000 },
+        "actividadRecurrente": { "type": "string", "maxLength": 30 },
+        "comentarios": { "type": "string", "maxLength": 2000 },
+        "editadoPor": { "type": "string", "maxLength": 100 },
+        "fechaEdicion": { "type": "string", "maxLength": 50 },
+        "serieRecurrente": { "type": "string", "maxLength": 128 },
+        "recurrenteId": { "type": "string", "maxLength": 128 },
+        "indiceEnSerie": { "type": "number" },
+        "totalEnSerie": { "type": "number" },
+        "tipoRecurrencia": { "type": "string", "maxLength": 50 },
+        "diasSemana": { "type": "string", "maxLength": 50 },
+        "fechaInicioRecurrencia": { "type": "string", "maxLength": 10 },
+        "fechaFinRecurrencia": { "type": "string", "maxLength": 10 },
+        "cantidadParticipantes": { "type": "number" },
+        "realizada": { "type": "string", "maxLength": 20 },
+        "rut": { "type": "string", "maxLength": 20 },
+        "domicilio": { "type": "string", "maxLength": 300 },
+        "informeSemanal": { "type": "string", "maxLength": 100 },
+        "googleEventId": { "type": "string", "maxLength": 150 },
+        "importante": { "type": "string", "maxLength": 10 },
+        "requiereCartaCompromiso": { "type": "boolean" },
+        "descargarCartaAlCrear": { "type": "boolean" },
+        "cartaCompromisoDescargada": { "type": "boolean" },
+        "terminaDiaSiguiente": { "type": "boolean" },
+        "horarioExtendidoAutorizado": { "type": "boolean" },
+        "claveAutorizacion": { "type": "string", "maxLength": 100 },
+        "autorizadoPor": { "type": "string", "maxLength": 100 },
+        "actoAutorizaUso": { "type": "string", "maxLength": 200 },
+        "normativaUsoAplicable": { "type": "string", "maxLength": 200 },
+        "fundamentoGratuidad": { "type": "string", "maxLength": 200 },
+        "delegacionFacultades": { "type": "string", "maxLength": 200 },
+        "estado": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 },
+        "version": { "type": "number" }
+      },
+      "required": ["id", "fecha", "horaInicio", "horaFin", "espacio", "responsable", "tipoActividad", "descripcion"]
+    },
+    "UsuarioSistema": {
+      "title": "UsuarioSistema",
+      "description": "Cuenta de usuario autorizada para operar el sistema con perfil de rol y clave cifrada/hash",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "maxLength": 100 },
+        "name": { "type": "string", "maxLength": 150 },
+        "passwordHash": { "type": "string", "maxLength": 256 },
+        "role": { "type": "string", "maxLength": 50 },
+        "initials": { "type": "string", "maxLength": 10 },
+        "avatarColor": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "isCustom": { "type": "boolean" },
+        "isMasterAdmin": { "type": "boolean" }
+      },
+      "required": ["username", "name", "passwordHash", "role"]
+    },
+    "CalificacionEspacio": {
+      "title": "CalificacionEspacio",
+      "description": "Evaluación e inspección del estado de entrega y uso de un recinto",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "reservaId": { "type": "string", "maxLength": 128 },
+        "fecha": { "type": "string", "maxLength": 10 },
+        "espacio": { "type": "string", "maxLength": 150 },
+        "responsable": { "type": "string", "maxLength": 200 },
+        "tipoActividad": { "type": "string", "maxLength": 100 },
+        "puntaje": { "type": "number" },
+        "estadoLimpieza": { "type": "string", "maxLength": 50 },
+        "entregaHorario": { "type": "string", "maxLength": 50 },
+        "cuidadoMobiliario": { "type": "string", "maxLength": 50 },
+        "cumplioReglamento": { "type": "string", "maxLength": 50 },
+        "observaciones": { "type": "string", "maxLength": 2000 },
+        "evaluadoPor": { "type": "string", "maxLength": 100 },
+        "fechaEvaluacion": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "reservaId", "fecha", "espacio", "puntaje", "evaluadoPor"]
+    },
+    "ConfiguracionSistema": {
+      "title": "ConfiguracionSistema",
+      "description": "Documentos de catálogo institucional (espacios, tipos de préstamo, actividades, equipamiento, envío de planillas)",
+      "type": "object",
+      "properties": {
+        "data": { "type": ["array", "object"] },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["data"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Historial inmutable de auditoría y trazabilidad de acciones sobre reservas y configuración",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "maxLength": 50 },
+        "user": { "type": "string", "maxLength": 100 },
+        "userRole": { "type": "string", "maxLength": 50 },
+        "action": { "type": "string", "maxLength": 50 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "reservaId": { "type": "string", "maxLength": 128 },
+        "reservaTitle": { "type": "string", "maxLength": 200 },
+        "reservaFecha": { "type": "string", "maxLength": 10 },
+        "reservaEspacio": { "type": "string", "maxLength": 150 },
+        "reservaHorario": { "type": "string", "maxLength": 50 },
+        "reservaResponsable": { "type": "string", "maxLength": 200 },
+        "isReverted": { "type": "boolean" },
+        "revertedAt": { "type": "string", "maxLength": 50 },
+        "revertedBy": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "timestamp", "user", "action", "description"]
+    },
+    "FcmToken": {
+      "title": "FcmToken",
+      "description": "Registro de dispositivo para entrega de notificaciones push FCM en tiempo real",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string", "maxLength": 500 },
+        "deviceId": { "type": "string", "maxLength": 128 },
+        "platform": { "type": "string", "maxLength": 50 },
+        "userAgent": { "type": "string", "maxLength": 500 },
+        "username": { "type": "string", "maxLength": 100 },
+        "registeredAt": { "type": "string", "maxLength": 50 },
+        "lastActive": { "type": "string", "maxLength": 50 },
+        "notifyImportant": { "type": "boolean" },
+        "notifyTopamiento": { "type": "boolean" }
+      },
+      "required": ["deviceId", "token"]
+    },
+    "FcmNotificacion": {
+      "title": "FcmNotificacion",
+      "description": "Alerta de notificación enviada para difusión entre estaciones de trabajo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 200 },
+        "body": { "type": "string", "maxLength": 1000 },
+        "reservationId": { "type": "string", "maxLength": 128 },
+        "spaceName": { "type": "string", "maxLength": 150 },
+        "targetDate": { "type": "string", "maxLength": 10 },
+        "view": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "createdBy": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "type", "title", "body", "createdAt"]
+    },
+    "CopiaSeguridad": {
+      "title": "CopiaSeguridad",
+      "description": "Snapshot de copia de seguridad periódica automática cada 15 días o manual de la base de datos",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "fecha": { "type": "string", "maxLength": 10 },
+        "timestamp": { "type": "string", "maxLength": 50 },
+        "tipo": { "type": "string", "maxLength": 50 },
+        "creadoPor": { "type": "string", "maxLength": 150 },
+        "totalReservas": { "type": "number" },
+        "totalEspacios": { "type": "number" },
+        "totalUsuarios": { "type": "number" },
+        "totalCalificaciones": { "type": "number" },
+        "totalEquipamiento": { "type": "number" },
+        "checksum": { "type": "string", "maxLength": 100 },
+        "tamanoBytes": { "type": "number" },
+        "descripcion": { "type": "string", "maxLength": 500 },
+        "totalPartes": { "type": "number" },
+        "esChunked": { "type": "boolean" }
+      },
+      "required": ["id", "fecha", "timestamp", "tipo", "totalReservas"]
+    },
+    "CopiaSeguridadParte": {
+      "title": "CopiaSeguridadParte",
+      "description": "Fragmento particionado de datos serializados para copias de seguridad de gran volumen",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "backupId": { "type": "string", "maxLength": 128 },
+        "index": { "type": "number" },
+        "totalPartes": { "type": "number" },
+        "payload": { "type": "string" }
+      },
+      "required": ["id", "backupId", "index", "payload"]
+    },
+    "ScheduleSlot": {
+      "title": "ScheduleSlot",
+      "description": "Registro de franjas horarias y ocupación por fecha y espacio para control estricto de concurrencia",
+      "type": "object",
+      "properties": {
+        "fecha": { "type": "string" },
+        "espacio": { "type": "string" },
+        "bookings": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["fecha", "espacio", "bookings"]
+    },
+    "BloqueoEspacio": {
+      "title": "BloqueoEspacio",
+      "description": "Bloqueo temporal o inhabilitación de espacios por mantención, pintura, reparaciones u obras",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "espacio": { "type": "string", "maxLength": 150 },
+        "fechaInicio": { "type": "string", "maxLength": 10 },
+        "fechaFin": { "type": "string", "maxLength": 10 },
+        "horaInicio": { "type": "string", "maxLength": 5 },
+        "horaFin": { "type": "string", "maxLength": 5 },
+        "todoElDia": { "type": "boolean" },
+        "motivo": { "type": "string", "maxLength": 100 },
+        "descripcion": { "type": "string", "maxLength": 1000 },
+        "responsableMantenimiento": { "type": "string", "maxLength": 150 },
+        "contactoEmpresa": { "type": "string", "maxLength": 100 },
+        "bloquearSubEspacios": { "type": "boolean" },
+        "activo": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "createdBy": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "espacio", "fechaInicio", "fechaFin", "motivo", "todoElDia", "activo"]
+    }
+  },
+  "firestore": {
+    "/reservas_comunitarias_v2/{reservaId}": {
+      "schema": "Reserva",
+      "description": "Colección principal de reservas de espacios comunitarios"
+    },
+    "/reservas/{reservaId}": {
+      "schema": "Reserva",
+      "description": "Colección heredada de reservas de espacios comunitarios"
+    },
+    "/bloqueos_espacios/{bloqueoId}": {
+      "schema": "BloqueoEspacio",
+      "description": "Colección de bloqueos administrativos y mantenciones de espacios"
+    },
+    "/usuarios_sistema/{username}": {
+      "schema": "UsuarioSistema",
+      "description": "Colección de usuarios autorizados del sistema"
+    },
+    "/calificaciones_espacios/{calificacionId}": {
+      "schema": "CalificacionEspacio",
+      "description": "Colección de inspecciones y evaluaciones de recintos"
+    },
+    "/configuracion_sistema/{configId}": {
+      "schema": "ConfiguracionSistema",
+      "description": "Colección de catálogos y parámetros del sistema"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Colección de registros de auditoría y trazabilidad histórica"
+    },
+    "/fcm_tokens/{tokenId}": {
+      "schema": "FcmToken",
+      "description": "Tokens de registro para notificaciones push"
+    },
+    "/fcm_notificaciones/{notificationId}": {
+      "schema": "FcmNotificacion",
+      "description": "Registro de avisos y notificaciones distribuidas"
+    },
+    "/copias_seguridad/{backupId}": {
+      "schema": "CopiaSeguridad",
+      "description": "Colección de metadatos de copias de seguridad de la base de datos (automáticas cada 15 días y manuales)"
+    },
+    "/copias_seguridad/{backupId}/partes/{parteId}": {
+      "schema": "CopiaSeguridadParte",
+      "description": "Fragmentos serializados del contenido de respaldo para superar la restricción de 1MB por documento"
+    },
+    "/schedule_slots/{slotId}": {
+      "schema": "ScheduleSlot",
+      "description": "Bloqueos y franjas para concurrencia atómica de reservas con runTransaction"
+    }
+  }
+}
