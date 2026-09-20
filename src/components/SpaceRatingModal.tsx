@@ -33,11 +33,11 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
   currentUserName = 'Personal de Turno',
   onSaveRating
 }) => {
-  const [puntajeGeneral, setPuntajeGeneral] = useState<number>(5);
-  const [limpieza, setLimpieza] = useState<number>(5);
-  const [puntualidad, setPuntualidad] = useState<number>(5);
-  const [cuidadoInstalaciones, setCuidadoInstalaciones] = useState<number>(5);
-  const [comportamiento, setComportamiento] = useState<number>(5);
+  const [puntajeGeneral, setPuntajeGeneral] = useState<number | null>(null);
+  const [limpieza, setLimpieza] = useState<number | null>(null);
+  const [puntualidad, setPuntualidad] = useState<number | null>(null);
+  const [cuidadoInstalaciones, setCuidadoInstalaciones] = useState<number | null>(null);
+  const [comportamiento, setComportamiento] = useState<number | null>(null);
   const [auxiliarName, setAuxiliarName] = useState<string>(currentUserName);
   
   const [esCumpleanos, setEsCumpleanos] = useState<boolean>(false);
@@ -56,11 +56,11 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
       setEsCumpleanos(isBday);
 
       if (existingRating) {
-        setPuntajeGeneral(existingRating.puntajeGeneral || 5);
-        setLimpieza(existingRating.limpieza || 5);
-        setPuntualidad(existingRating.puntualidad || 5);
-        setCuidadoInstalaciones(existingRating.cuidadoInstalaciones || 5);
-        setComportamiento(existingRating.comportamiento || 5);
+        setPuntajeGeneral(existingRating.puntajeGeneral > 0 ? existingRating.puntajeGeneral : null);
+        setLimpieza(existingRating.limpieza > 0 ? existingRating.limpieza : null);
+        setPuntualidad(existingRating.puntualidad > 0 ? existingRating.puntualidad : null);
+        setCuidadoInstalaciones(existingRating.cuidadoInstalaciones > 0 ? existingRating.cuidadoInstalaciones : null);
+        setComportamiento(existingRating.comportamiento > 0 ? existingRating.comportamiento : null);
         setAuxiliarName(existingRating.auxiliarName || currentUserName);
         setEsCumpleanos(existingRating.esCumpleanos ?? isBday);
         setHuboDanos(existingRating.huboDanos || false);
@@ -70,12 +70,12 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
         setMinutosExceso(existingRating.minutosExceso || 15);
         setObservaciones(existingRating.observaciones || '');
       } else {
-        // Defaults for fresh rating
-        setPuntajeGeneral(5);
-        setLimpieza(5);
-        setPuntualidad(5);
-        setCuidadoInstalaciones(5);
-        setComportamiento(5);
+        // Defaults for fresh rating: start at null (unselected) so user consciously scores
+        setPuntajeGeneral(null);
+        setLimpieza(null);
+        setPuntualidad(null);
+        setCuidadoInstalaciones(null);
+        setComportamiento(null);
         setAuxiliarName(currentUserName);
         setHuboDanos(false);
         setDetalleDanos('');
@@ -107,6 +107,18 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
       return;
     }
 
+    // Validate that all five criteria have been actively rated (1 to 5)
+    if (
+      !puntajeGeneral ||
+      !limpieza ||
+      !puntualidad ||
+      !cuidadoInstalaciones ||
+      !comportamiento
+    ) {
+      setValidationError('Por favor califica todos los 5 criterios (de 1 a 5 estrellas) antes de guardar la evaluación.');
+      return;
+    }
+
     if (!existingRating) {
       const check = isRatingAllowedForReservation(reservation);
       if (!check.allowed) {
@@ -126,11 +138,11 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
       emailContacto: reservation.emailContacto || '',
       esCumpleanos,
       auxiliarName: auxiliarName.trim(),
-      puntajeGeneral,
-      limpieza,
-      puntualidad,
-      cuidadoInstalaciones,
-      comportamiento,
+      puntajeGeneral: puntajeGeneral || 1,
+      limpieza: limpieza || 1,
+      puntualidad: puntualidad || 1,
+      cuidadoInstalaciones: cuidadoInstalaciones || 1,
+      comportamiento: comportamiento || 1,
       huboDanos,
       detalleDanos: huboDanos ? detalleDanos : '',
       dejoBasura,
@@ -155,7 +167,7 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
     id: string;
     label: string;
     description?: string;
-    value: number;
+    value: number | null;
     onChange: (val: number) => void;
   }) => (
     <div
@@ -182,10 +194,10 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
               if (isFutureOrBlocked) return;
               if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
                 e.preventDefault();
-                onChange(Math.min(5, value + 1));
+                onChange(Math.min(5, (value || 0) + 1));
               } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
                 e.preventDefault();
-                onChange(Math.max(1, value - 1));
+                onChange(Math.max(1, (value || 1) - 1));
               }
             }}
             className={`p-1 text-slate-300 hover:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 rounded-lg transition ${
@@ -194,13 +206,20 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
           >
             <Star
               className={`w-5 h-5 transition-transform hover:scale-110 ${
-                star <= value ? 'text-amber-400 fill-amber-400' : 'text-slate-200'
+                value && star <= value ? 'text-amber-400 fill-amber-400' : 'text-slate-200'
               }`}
             />
           </button>
         ))}
-        <span aria-live="polite" className="text-xs font-mono font-bold text-slate-700 w-8 text-right ml-1">
-          {value}/5
+        <span
+          aria-live="polite"
+          className={`text-xs font-semibold px-2 py-0.5 rounded-md min-w-[76px] text-center ml-1 ${
+            value && value > 0
+              ? 'text-slate-800 font-mono font-bold bg-slate-100 border border-slate-200'
+              : 'text-amber-800 bg-amber-50 border border-amber-200 text-[10.5px]'
+          }`}
+        >
+          {value && value > 0 ? `${value}/5` : 'Sin calificar'}
         </span>
       </div>
     </div>
@@ -503,20 +522,57 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
               Cancelar
             </button>
 
-            <button
-              type="submit"
-              id="btn-guardar-calificacion"
-              disabled={isFutureOrBlocked}
-              className={`min-h-[44px] px-5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5 ${
-                isFutureOrBlocked
-                  ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
-              }`}
-              title={isFutureOrBlocked ? eligibility.reason : undefined}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>{isFutureOrBlocked ? 'Evaluación Bloqueada (Evento Futuro)' : existingRating ? 'Actualizar Calificación' : 'Guardar Calificación'}</span>
-            </button>
+            {(() => {
+              const missingCriteria: string[] = [];
+              if (!puntajeGeneral) missingCriteria.push('General');
+              if (!limpieza) missingCriteria.push('Limpieza');
+              if (!puntualidad) missingCriteria.push('Puntualidad');
+              if (!cuidadoInstalaciones) missingCriteria.push('Cuidado');
+              if (!comportamiento) missingCriteria.push('Normas');
+
+              const isAllCriteriaRated = missingCriteria.length === 0;
+              const isSaveDisabled = isFutureOrBlocked || !isAllCriteriaRated || !auxiliarName.trim();
+
+              return (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  {!isFutureOrBlocked && missingCriteria.length > 0 && (
+                    <span className="text-[11px] text-amber-800 font-medium bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 text-center">
+                      Faltan por calificar: <strong className="text-amber-950">{missingCriteria.join(', ')}</strong>
+                    </span>
+                  )}
+                  <button
+                    type="submit"
+                    id="btn-guardar-calificacion"
+                    disabled={isSaveDisabled}
+                    className={`min-h-[44px] px-5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition flex items-center justify-center space-x-1.5 ${
+                      isSaveDisabled
+                        ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                    }`}
+                    title={
+                      isFutureOrBlocked
+                        ? eligibility.reason
+                        : !isAllCriteriaRated
+                        ? `Debes calificar todos los criterios. Faltan: ${missingCriteria.join(', ')}`
+                        : !auxiliarName.trim()
+                        ? 'Indica el nombre del evaluador'
+                        : undefined
+                    }
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>
+                      {isFutureOrBlocked
+                        ? 'Evaluación Bloqueada (Evento Futuro)'
+                        : !isAllCriteriaRated
+                        ? 'Faltan criterios por calificar'
+                        : existingRating
+                        ? 'Actualizar Calificación'
+                        : 'Guardar Calificación'}
+                    </span>
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </form>
     </BaseModal>

@@ -108,6 +108,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
             type="button"
             onClick={() => onPageChange(1)}
             disabled={currentPage === 1}
+            aria-disabled={currentPage === 1}
             aria-label="Primera página"
             title="Primera página"
             className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-600 transition cursor-pointer"
@@ -121,6 +122,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
           type="button"
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
+          aria-disabled={currentPage === 1}
           aria-label="Página anterior"
           title="Página anterior"
           className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-medium transition cursor-pointer"
@@ -165,6 +167,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
           type="button"
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage === totalPages}
+          aria-disabled={currentPage === totalPages}
           aria-label="Página siguiente"
           title="Página siguiente"
           className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-medium transition cursor-pointer"
@@ -179,6 +182,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
             type="button"
             onClick={() => onPageChange(totalPages)}
             disabled={currentPage === totalPages}
+            aria-disabled={currentPage === totalPages}
             aria-label="Última página"
             title="Última página"
             className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-600 transition cursor-pointer"

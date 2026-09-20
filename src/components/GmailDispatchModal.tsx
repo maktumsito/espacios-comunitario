@@ -63,6 +63,7 @@ import {
 } from '../services/gmailDispatchService';
 import { recordAuditEntry } from '../services/auditLogService';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
+import { formatActivitiesInDays } from '../utils/pluralUtils';
 import { generateDailyPdfsForDates } from '../utils/dailySchedulePdf';
 
 interface GmailDispatchModalProps {
@@ -794,9 +795,8 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
             </button>
           </div>
 
-          <div className="text-xs text-slate-500 font-medium">
-            <span className="font-bold text-slate-800">{matchingActivities.length}</span> actividades en{' '}
-            <span className="font-bold text-slate-800">{effectiveDates.length}</span> día(s)
+          <div className="text-xs text-slate-600 font-semibold bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+            {formatActivitiesInDays(matchingActivities.length, effectiveDates.length)}
           </div>
         </div>
 

@@ -828,7 +828,7 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
                 </span>
               </div>
               <p className="text-xs text-rose-800 leading-relaxed">
-                La fecha seleccionada ({formatDateDDMMYYYY(formData.fecha || '')}) es un día feriado en Chile.
+                La fecha seleccionada ({formatDateDDMMYYYY(formData.fecha || editingReservation?.fecha || '')}) es un día feriado en Chile.
                 Por defecto las reservas en días feriados están <strong>bloqueadas/omitidas</strong>.
                 Para autorizar el uso excepcional de este espacio en feriado, debes ingresar la clave especial <strong>CCD</strong>.
               </p>
@@ -843,20 +843,22 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
             </div>
             <div className="flex items-center space-x-2">
               <input
+                id="input-reserva-clave-ccd"
                 type="password"
                 placeholder="Ingresa clave CCD"
                 value={holidayOverrideKey}
                 onChange={(e) => setHolidayOverrideKey(e.target.value)}
+                aria-describedby="holiday-feedback-status"
                 className="px-3 py-1.5 bg-white border border-rose-300 rounded-xl text-xs font-mono font-bold tracking-wider text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 w-44 shadow-2xs"
               />
               {isHolidayAuthorized ? (
-                <span className="flex items-center space-x-1 text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-xl text-[11px] font-bold border border-emerald-300 shadow-2xs">
+                <span id="holiday-feedback-status" className="flex items-center space-x-1 text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-xl text-[11px] font-bold border border-emerald-300 shadow-2xs">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Feriado Autorizado</span>
                 </span>
               ) : (
-                <span className="text-[10px] text-rose-700 bg-rose-100 px-2 py-1 rounded-lg font-semibold border border-rose-200">
-                  Requiere CCD
+                <span id="holiday-feedback-status" className="text-[10px] text-rose-700 bg-rose-100 px-2 py-1 rounded-lg font-semibold border border-rose-200">
+                  🚫 Clave requerida para avanzar
                 </span>
               )}
             </div>

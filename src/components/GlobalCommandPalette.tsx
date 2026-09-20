@@ -26,6 +26,7 @@ import {
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { fuzzySearchReservations, fuzzySearchItems } from '../utils/fuzzySearch';
+import { ConfirmationModal } from './common/ConfirmationModal';
 
 interface PaletteCommandItem {
   id: string;
@@ -36,6 +37,9 @@ interface PaletteCommandItem {
   badgeColor?: 'blue' | 'rose' | 'amber' | 'emerald' | 'purple' | 'slate';
   icon: React.ReactNode;
   metadata?: string;
+  isDestructive?: boolean;
+  confirmTitle?: string;
+  confirmMessage?: string;
   onSelect: () => void;
 }
 
@@ -89,6 +93,19 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    variant?: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -455,6 +472,26 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
     setSelectedIndex(0);
   }, [query]);
 
+  const handleSelectItem = useCallback((item: PaletteCommandItem) => {
+    if (item.isDestructive) {
+      setConfirmDialog({
+        isOpen: true,
+        title: item.confirmTitle || item.title,
+        message:
+          item.confirmMessage ||
+          '¿Estás seguro de que deseas ejecutar esta acción? Esta operación puede ser irreversible.',
+        variant: 'danger',
+        confirmLabel: 'Confirmar y Ejecutar',
+        onConfirm: () => {
+          setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+          item.onSelect();
+        }
+      });
+      return;
+    }
+    item.onSelect();
+  }, []);
+
   // Keyboard navigation inside list
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (flattenedItems.length === 0) {
@@ -474,7 +511,7 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
       e.preventDefault();
       const currentItem = flattenedItems[selectedIndex];
       if (currentItem) {
-        currentItem.onSelect();
+        handleSelectItem(currentItem);
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -567,7 +604,7 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
                           key={item.id}
                           data-index={itemIdx}
                           onMouseEnter={() => setSelectedIndex(itemIdx)}
-                          onClick={item.onSelect}
+                          onClick={() => handleSelectItem(item)}
                           className={`flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition text-left ${
                             isSelected
                               ? 'bg-blue-50/90 text-blue-950 ring-1 ring-blue-500/30'
@@ -630,7 +667,7 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
                           key={item.id}
                           data-index={itemIdx}
                           onMouseEnter={() => setSelectedIndex(itemIdx)}
-                          onClick={item.onSelect}
+                          onClick={() => handleSelectItem(item)}
                           className={`flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition text-left ${
                             isSelected
                               ? 'bg-emerald-50 text-emerald-950 ring-1 ring-emerald-500/30'
@@ -680,7 +717,7 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
                           key={item.id}
                           data-index={itemIdx}
                           onMouseEnter={() => setSelectedIndex(itemIdx)}
-                          onClick={item.onSelect}
+                          onClick={() => handleSelectItem(item)}
                           className={`flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer transition text-left ${
                             isSelected
                               ? 'bg-blue-50 text-blue-950 ring-1 ring-blue-500/30'
@@ -730,7 +767,7 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
                           key={item.id}
                           data-index={itemIdx}
                           onMouseEnter={() => setSelectedIndex(itemIdx)}
-                          onClick={item.onSelect}
+                          onClick={() => handleSelectItem(item)}
                           className={`flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer transition text-left ${
                             isSelected
                               ? 'bg-slate-100 text-slate-900 ring-1 ring-slate-300'
@@ -813,6 +850,16 @@ export const GlobalCommandPalette: React.FC<GlobalCommandPaletteProps> = ({
           </span>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant={confirmDialog.variant}
+        confirmLabel={confirmDialog.confirmLabel}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

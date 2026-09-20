@@ -500,9 +500,24 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
 
                 {/* Automation Toggle Switch */}
                 <div className="flex items-center space-x-2">
-                  <span className={`text-[11px] font-bold ${backupConfig.enabled ? 'text-emerald-700' : 'text-slate-400'}`}>
-                    {backupConfig.enabled ? 'Automatización Activa' : 'Pausada'}
-                  </span>
+                  {(() => {
+                    const hasConfirmedRemote = backupList.some(b => b.storageStatus === 'firestore_confirmed');
+                    return (
+                      <span className={`text-[11px] font-bold ${
+                        !backupConfig.enabled
+                          ? 'text-slate-400'
+                          : hasConfirmedRemote
+                          ? 'text-emerald-700'
+                          : 'text-amber-700'
+                      }`}>
+                        {!backupConfig.enabled
+                          ? 'Automatización Pausada'
+                          : hasConfirmedRemote
+                          ? 'Automatización Activa (Confirmada en Firestore)'
+                          : 'Solo Local (Sin confirmación remota)'}
+                      </span>
+                    );
+                  })()}
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
@@ -517,20 +532,28 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
 
               {/* Status metrics grid */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
-                <div className="p-3 bg-white/90 rounded-xl border border-emerald-100 shadow-2xs">
-                  <div className="flex items-center space-x-1.5 text-slate-500 text-[11px] font-medium">
-                    <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Último Respaldo:</span>
-                  </div>
-                  <div className="text-sm font-bold text-slate-800 mt-1">
-                    {backupConfig.lastBackupDate || 'Recién inicializado'}
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
-                    {backupConfig.lastBackupTimestamp
-                      ? `Hace ${Math.floor((Date.now() - backupConfig.lastBackupTimestamp) / (1000 * 60 * 60 * 24))} día(s)`
-                      : 'Listo para ejecutarse'}
-                  </div>
-                </div>
+                {(() => {
+                  const latestBackup = backupList.length > 0 ? backupList[0] : null;
+                  const displayDate = latestBackup ? latestBackup.fecha : null;
+                  const displayTimestamp = latestBackup?.timestamp ? new Date(latestBackup.timestamp).getTime() : null;
+
+                  return (
+                    <div className="p-3 bg-white/90 rounded-xl border border-emerald-100 shadow-2xs">
+                      <div className="flex items-center space-x-1.5 text-slate-500 text-[11px] font-medium">
+                        <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Último Respaldo:</span>
+                      </div>
+                      <div className="text-sm font-bold text-slate-800 mt-1">
+                        {displayDate || 'Sin respaldos registrados'}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {displayTimestamp
+                          ? `Hace ${Math.floor((Date.now() - displayTimestamp) / (1000 * 60 * 60 * 24))} día(s) (${latestBackup?.storageStatus === 'firestore_confirmed' ? 'Confirmado en Firestore' : 'Solo local'})`
+                          : 'Aún no hay copias de seguridad'}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="p-3 bg-white/90 rounded-xl border border-blue-100 shadow-2xs">
                   <div className="flex items-center space-x-1.5 text-slate-500 text-[11px] font-medium">
@@ -651,13 +674,22 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                           >
                             {backup.tipo === 'automatica_15_dias' ? 'Automática (15 días)' : 'Manual'}
                           </span>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-md font-semibold flex items-center space-x-1 ${
+                              backup.storageStatus === 'firestore_confirmed'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            }`}
+                          >
+                            <span>{backup.storageStatus === 'firestore_confirmed' ? '☁️ En Firestore' : '💾 Solo local'}</span>
+                          </span>
                           <span className="text-[10px] font-mono text-slate-400">
                             {backup.timestamp.slice(11, 16)} hrs
                           </span>
                         </div>
 
                         <div className="text-[11px] text-slate-500 truncate">
-                          {backup.totalReservas} reservas • {backup.totalEspacios} espacios • {Math.round((backup.tamanoBytes || 0) / 1024)} KB
+                          {backup.totalReservas} {backup.totalReservas === 1 ? 'reserva' : 'reservas'} • {backup.totalEspacios} {backup.totalEspacios === 1 ? 'espacio' : 'espacios'} • {Math.round((backup.tamanoBytes || 0) / 1024)} KB
                         </div>
                       </div>
 

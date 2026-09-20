@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, deleteDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, Unsubscribe, query, limit } from 'firebase/firestore';
 import { getDb } from '../firebase/config';
 import { SpaceRating, Reservation } from '../types';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
@@ -311,10 +311,10 @@ export function subscribeToRatings(
 
   try {
     const db = getDb();
-    const ratingsCol = collection(db, COLLECTION_NAME);
+    const ratingsQuery = query(collection(db, COLLECTION_NAME), limit(150));
 
     return onSnapshot(
-      ratingsCol,
+      ratingsQuery,
       (snapshot) => {
         if (!snapshot.empty) {
           const list: SpaceRating[] = snapshot.docs.map((docSnap) => ({
@@ -460,6 +460,7 @@ export function getResponsibleHistoryAlert(
   const matched: SpaceRating[] = [];
   const incidents: SpaceRating[] = [];
   let scoreSum = 0;
+  let ratedCount = 0;
 
   for (const r of ratings) {
     const rResp = (r.responsable || '').trim().toLowerCase();
@@ -470,9 +471,13 @@ export function getResponsibleHistoryAlert(
 
     if (matchName || matchPhone) {
       matched.push(r);
-      scoreSum += r.puntajeGeneral;
+      const score = Number(r.puntajeGeneral);
+      if (typeof score === 'number' && !isNaN(score) && score > 0) {
+        scoreSum += score;
+        ratedCount++;
+      }
 
-      if (r.huboDanos || r.dejoBasura || r.puntajeGeneral <= 2) {
+      if (r.huboDanos || r.dejoBasura || (typeof score === 'number' && score > 0 && score <= 2)) {
         incidents.push(r);
       }
     }
@@ -488,7 +493,7 @@ export function getResponsibleHistoryAlert(
     };
   }
 
-  const avg = scoreSum / matched.length;
+  const avg = ratedCount > 0 ? scoreSum / ratedCount : 0;
   let warningMessage: string;
 
   if (incidents.length > 0) {

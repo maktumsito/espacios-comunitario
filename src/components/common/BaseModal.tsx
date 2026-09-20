@@ -65,6 +65,8 @@ export const BaseModal: React.FC<BaseModalProps> = ({
   const titleId = id ? `${id}-title` : 'modal-title';
   const descId = id ? `${id}-desc` : undefined;
 
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
+
   // 1. Esc Key listener
   useEffect(() => {
     if (!isOpen) return;
@@ -80,9 +82,11 @@ export const BaseModal: React.FC<BaseModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // 2. Body scroll lock
+  // 2. Body scroll lock & Save previous focused element
   useEffect(() => {
     if (!isOpen) return;
+
+    previousActiveElementRef.current = document.activeElement as HTMLElement;
 
     const originalOverflow = document.body.style.overflow;
     const originalPaddingRight = document.body.style.paddingRight;
@@ -96,22 +100,55 @@ export const BaseModal: React.FC<BaseModalProps> = ({
     return () => {
       document.body.style.overflow = originalOverflow;
       document.body.style.paddingRight = originalPaddingRight;
+      if (previousActiveElementRef.current && typeof previousActiveElementRef.current.focus === 'function') {
+        previousActiveElementRef.current.focus();
+        previousActiveElementRef.current = null;
+      }
     };
   }, [isOpen]);
 
-  // 3. Focus trap / Initial focus
+  // 3. Focus trap: Initial focus and Tab/Shift+Tab cycling
   useEffect(() => {
     if (!isOpen || !modalRef.current) return;
 
-    const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-    );
+    const getFocusable = (): HTMLElement[] => {
+      if (!modalRef.current) return [];
+      return Array.from(
+        modalRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null);
+    };
 
-    if (focusableElements.length > 0) {
-      // Focus first non-close button if available, or first focusable
-      const firstTarget = focusableElements[0];
-      firstTarget?.focus();
+    const focusables = getFocusable();
+    if (focusables.length > 0) {
+      focusables[0]?.focus();
     }
+
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !modalRef.current) return;
+
+      const currentFocusables = getFocusable();
+      if (currentFocusables.length === 0) return;
+
+      const firstEl = currentFocusables[0];
+      const lastEl = currentFocusables[currentFocusables.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstEl) {
+          e.preventDefault();
+          lastEl.focus();
+        }
+      } else {
+        if (document.activeElement === lastEl) {
+          e.preventDefault();
+          firstEl.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleTabKey);
+    return () => window.removeEventListener('keydown', handleTabKey);
   }, [isOpen]);
 
   if (!isOpen) return null;

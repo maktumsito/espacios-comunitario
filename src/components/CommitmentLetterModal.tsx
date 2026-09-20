@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Reservation, SpaceInfo } from '../types';
 import { SPACES_LIST } from '../data/spacesData';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';

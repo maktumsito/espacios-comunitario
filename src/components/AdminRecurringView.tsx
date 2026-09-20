@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Repeat,
   Calendar,
@@ -86,42 +86,12 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
 }) => {
   const todayStr = format(new Date(), 'yyyy-MM-dd');
 
-  // Search & Filters
+  // Search & Filters state
   const [searchTerm, setSearchTerm] = useState('');
   const [spaceFilter, setSpaceFilter] = useState('ALL');
   const [expandedSeriesId, setExpandedSeriesId] = useState<string | null>(null);
 
-  // Modal: Modificar hasta qué fecha se repite
-  const [modifyingSeries, setModifyingSeries] = useState<RecurringSeriesGroup | null>(null);
-  const [newEndDate, setNewEndDate] = useState<string>('');
-  const [isUpdatingEndDate, setIsUpdatingEndDate] = useState(false);
-  const [modifyError, setModifyError] = useState<string | null>(null);
-  const [modifySuccess, setModifySuccess] = useState<string | null>(null);
-
-  // Modal / Form: Nueva Actividad Recurrente
-  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [newEspacio, setNewEspacio] = useState(spaces[0]?.name || 'GIMNASIO');
-  const [newTipoActividad, setNewTipoActividad] = useState(activityTypes[0]?.name || 'TALLER CCD');
-  const [newResponsable, setNewResponsable] = useState('');
-  const [newTelefono, setNewTelefono] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newDescripcion, setNewDescripcion] = useState('');
-  const [newHoraInicio, setNewHoraInicio] = useState('10:00');
-  const [newHoraFin, setNewHoraFin] = useState('11:30');
-  const [newFechaInicio, setNewFechaInicio] = useState(todayStr);
-  const [newFechaFin, setNewFechaFin] = useState(() => {
-    try {
-      return format(addMonths(new Date(), 2), 'yyyy-MM-dd');
-    } catch {
-      return '2026-12-31';
-    }
-  });
-  const [newSelectedDays, setNewSelectedDays] = useState<number[]>([new Date().getDay()]);
-  const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [newSeriesError, setNewSeriesError] = useState<string | null>(null);
-  const [newSeriesSuccess, setNewSeriesSuccess] = useState<string | null>(null);
-
-  // Group reservations into recurring series
+  // Group reservations into recurring series - Declared FIRST
   const recurringSeriesList: RecurringSeriesGroup[] = useMemo(() => {
     const seriesMap = new Map<string, Reservation[]>();
 
@@ -204,7 +174,7 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
     });
   }, [recurringSeriesList, spaceFilter, searchTerm]);
 
-  // Pagination on filteredSeries
+  // Pagination on filteredSeries (renders initially 50 series, strictly limiting DOM nodes)
   const { 
     paginatedItems, 
     currentPage, 
@@ -215,12 +185,42 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
     startIndex,
     endIndex,
     totalItems
-  } = usePagination(filteredSeries, 10);
+  } = usePagination(filteredSeries, 50);
 
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, spaceFilter, setCurrentPage]);
+
+  // Modal: Modificar hasta qué fecha se repite
+  const [modifyingSeries, setModifyingSeries] = useState<RecurringSeriesGroup | null>(null);
+  const [newEndDate, setNewEndDate] = useState<string>('');
+  const [isUpdatingEndDate, setIsUpdatingEndDate] = useState(false);
+  const [modifyError, setModifyError] = useState<string | null>(null);
+  const [modifySuccess, setModifySuccess] = useState<string | null>(null);
+
+  // Modal / Form: Nueva Actividad Recurrente
+  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [newEspacio, setNewEspacio] = useState(spaces[0]?.name || 'GIMNASIO');
+  const [newTipoActividad, setNewTipoActividad] = useState(activityTypes[0]?.name || 'TALLER CCD');
+  const [newResponsable, setNewResponsable] = useState('');
+  const [newTelefono, setNewTelefono] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newDescripcion, setNewDescripcion] = useState('');
+  const [newHoraInicio, setNewHoraInicio] = useState('10:00');
+  const [newHoraFin, setNewHoraFin] = useState('11:30');
+  const [newFechaInicio, setNewFechaInicio] = useState(todayStr);
+  const [newFechaFin, setNewFechaFin] = useState(() => {
+    try {
+      return format(addMonths(new Date(), 2), 'yyyy-MM-dd');
+    } catch {
+      return '2026-12-31';
+    }
+  });
+  const [newSelectedDays, setNewSelectedDays] = useState<number[]>([new Date().getDay()]);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [newSeriesError, setNewSeriesError] = useState<string | null>(null);
+  const [newSeriesSuccess, setNewSeriesSuccess] = useState<string | null>(null);
 
   // Calculate upcoming preview dates for modifying series
   const modifyPreview = useMemo(() => {
@@ -815,6 +815,8 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
             onPageChange={setCurrentPage}
             pageSize={pageSize}
             onPageSizeChange={setPageSize}
+            pageSizeOptions={[10, 20, 50]}
+            itemLabel="series"
           />
         </div>
       )}

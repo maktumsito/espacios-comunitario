@@ -20,7 +20,8 @@ const defaultFuseOptions: IFuseOptions<Reservation> = {
 };
 
 /**
- * Searches a list of reservations using Fuse.js fuzzy matching with exact substring fallback.
+ * Searches a list of reservations prioritizing exact and substring matches,
+ * with Fuse.js fuzzy matching as fallback for typo tolerance.
  */
 export function fuzzySearchReservations(
   reservations: Reservation[],
@@ -33,40 +34,71 @@ export function fuzzySearchReservations(
   const cleanRutQ = trimmed.replace(/[^0-9kK]/g, '').toLowerCase();
   const normQ = trimmed.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-  const fuse = new Fuse(reservations, defaultFuseOptions);
-  const fuseResults = fuse.search(trimmed);
-  const fuseMatchedIds = new Set(fuseResults.map((r) => r.item.id));
+  // 1. Separate exact and substring matches into priority tiers
+  const exactMatches: { res: Reservation; priority: number }[] = [];
+  const exactMatchedIds = new Set<string>();
 
-  // Also include exact substring matches (e.g. partial RUT or exact words) that might have score above threshold
-  const fallbackMatches: Reservation[] = [];
   for (const r of reservations) {
-    if (fuseMatchedIds.has(r.id)) continue;
+    const cleanR = (r.rut || '').replace(/[^0-9kK]/g, '').toLowerCase();
+    const normId = (r.id || '').toLowerCase();
+    const normResp = (r.responsable || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const normTipo = (r.tipoActividad || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const normEsp = (r.espacio || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const normDesc = (r.descripcion || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-    if (cleanRutQ.length >= 3) {
-      const cleanR = (r.rut || '').replace(/[^0-9kK]/g, '').toLowerCase();
-      if (cleanR.includes(cleanRutQ)) {
-        fallbackMatches.push(r);
-        continue;
-      }
+    // Priority 1: Exact ID match or exact RUT match or exact Name/Activity match
+    if (
+      normId === normQ ||
+      (cleanRutQ.length >= 7 && cleanR === cleanRutQ) ||
+      normResp === normQ ||
+      normTipo === normQ
+    ) {
+      exactMatches.push({ res: r, priority: 1 });
+      exactMatchedIds.add(r.id);
+      continue;
     }
 
-    const normDesc = (r.descripcion || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const normResp = (r.responsable || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const normEsp = (r.espacio || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const normTipo = (r.tipoActividad || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
+    // Priority 2: Starts with query (name, activity, space, RUT, ID)
     if (
-      normDesc.includes(normQ) ||
-      normResp.includes(normQ) ||
-      normEsp.includes(normQ) ||
-      normTipo.includes(normQ) ||
-      r.id.toLowerCase().includes(normQ)
+      normResp.startsWith(normQ) ||
+      normTipo.startsWith(normQ) ||
+      normEsp.startsWith(normQ) ||
+      (cleanRutQ.length >= 3 && cleanR.startsWith(cleanRutQ)) ||
+      normId.startsWith(normQ)
     ) {
-      fallbackMatches.push(r);
+      exactMatches.push({ res: r, priority: 2 });
+      exactMatchedIds.add(r.id);
+      continue;
+    }
+
+    // Priority 3: Substring includes match
+    if (
+      normResp.includes(normQ) ||
+      normTipo.includes(normQ) ||
+      normEsp.includes(normQ) ||
+      normDesc.includes(normQ) ||
+      (cleanRutQ.length >= 3 && cleanR.includes(cleanRutQ)) ||
+      normId.includes(normQ)
+    ) {
+      exactMatches.push({ res: r, priority: 3 });
+      exactMatchedIds.add(r.id);
     }
   }
 
-  return [...fuseResults.map((r) => r.item), ...fallbackMatches];
+  exactMatches.sort((a, b) => a.priority - b.priority);
+  const prioritizedResults: Reservation[] = exactMatches.map((m) => m.res);
+
+  // 2. Fallback to Fuse.js for typo tolerance
+  const fuse = new Fuse(reservations, defaultFuseOptions);
+  const fuseResults = fuse.search(trimmed);
+
+  for (const match of fuseResults) {
+    if (!exactMatchedIds.has(match.item.id)) {
+      prioritizedResults.push(match.item);
+    }
+  }
+
+  return prioritizedResults;
 }
 
 /**
@@ -82,6 +114,7 @@ export function getFuzzyMatchIds(
 
 /**
  * Generic fuzzy search helper for any array of objects using Fuse.js
+ * with exact and prefix match prioritization.
  */
 export function fuzzySearchItems<T>(
   items: readonly T[],
@@ -91,6 +124,37 @@ export function fuzzySearchItems<T>(
 ): T[] {
   const trimmed = (query || '').trim();
   if (!trimmed) return [...items];
+
+  const normQ = trimmed.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const exactMatches: { item: T; priority: number }[] = [];
+  const exactMatchedSet = new Set<T>();
+
+  for (const item of items) {
+    let bestPriority = Infinity;
+
+    for (const key of keys) {
+      const val = (item as any)[key];
+      if (typeof val !== 'string') continue;
+      const normVal = val.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+      if (normVal === normQ) {
+        bestPriority = Math.min(bestPriority, 1);
+      } else if (normVal.startsWith(normQ)) {
+        bestPriority = Math.min(bestPriority, 2);
+      } else if (normVal.includes(normQ)) {
+        bestPriority = Math.min(bestPriority, 3);
+      }
+    }
+
+    if (bestPriority < Infinity) {
+      exactMatches.push({ item, priority: bestPriority });
+      exactMatchedSet.add(item);
+    }
+  }
+
+  exactMatches.sort((a, b) => a.priority - b.priority);
+  const result: T[] = exactMatches.map((m) => m.item);
 
   const fuse = new Fuse(items as T[], {
     keys,
@@ -102,6 +166,12 @@ export function fuzzySearchItems<T>(
   });
 
   const fuseResults = fuse.search(trimmed);
-  return fuseResults.map((res) => res.item);
+  for (const res of fuseResults) {
+    if (!exactMatchedSet.has(res.item)) {
+      result.push(res.item);
+    }
+  }
+
+  return result;
 }
 

@@ -14,7 +14,7 @@ import {
 import { getDb } from '../firebase/config';
 import { Reservation } from '../types';
 import { INITIAL_RESERVATIONS } from '../data/initialData';
-import { isChileanHoliday } from '../utils/holidayUtils';
+import { isChileanHoliday, verifyHolidayOverrideKey } from '../utils/holidayUtils';
 import { normalizeSpaceName } from '../data/spacesData';
 import { getChileLocalDateString } from '../utils/dateUtils';
 import { checkSingleConflict } from '../utils/conflictDetector';
@@ -23,6 +23,7 @@ import {
   setIndexedDbReservations
 } from '../utils/indexedDbStorage';
 import { validateReservationWithZod } from '../schemas/reservationSchema';
+import { recordFirestoreRead } from '../utils/firestoreTracker';
 
 // ============================================================================
 // CACHE VERSIONING & CONFIGURATION
@@ -678,11 +679,26 @@ export function subscribeToReservations(
   try {
     const db = getDb();
     const reservasCol = collection(db, COLLECTION_NAME);
+
+    // QUOTA OPTIMIZATION: If local cache already exists with historical data,
+    // only subscribe to active reservations (last 90 days onward) to slash Firestore read consumption by >90%.
+    const localExisting = getLocalCache();
+    const hasLocalHistory = localExisting.length > 0;
+
+    const d = new Date();
+    d.setDate(d.getDate() - 90);
+    const activeWindowStartDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const activeQuery = hasLocalHistory
+      ? query(reservasCol, where('fecha', '>=', activeWindowStartDate), orderBy('fecha', 'asc'))
+      : reservasCol;
+
     const unsubscribe = onSnapshot(
-      reservasCol,
+      activeQuery,
       (snapshot) => {
         const deletedSet = getDeletedIds();
         if (!snapshot.empty) {
+          recordFirestoreRead('reservas', snapshot.docs.length);
           const list: Reservation[] = [];
 
           snapshot.forEach((docSnap) => {
@@ -694,7 +710,15 @@ export function subscribeToReservations(
             list.push(normalizeReservationFromFirestore(docSnap.id, rawData));
           });
 
-          const sorted = list.sort(compareReservationsByDate);
+          // If querying active window, non-destructively merge with historical cache
+          let sorted: Reservation[];
+          if (hasLocalHistory) {
+            const currentCached = getLocalCache();
+            const historical = currentCached.filter(r => r.fecha < activeWindowStartDate);
+            sorted = [...historical, ...list].sort(compareReservationsByDate);
+          } else {
+            sorted = list.sort(compareReservationsByDate);
+          }
 
           // Compute incoming snapshot hash
           const incomingFirestoreHash = calculateReservationsHash(sorted);
@@ -704,7 +728,6 @@ export function subscribeToReservations(
 
           // HASH CHECK: If Firestore payload hash matches local cache hash, skip redundant state churn
           if (incomingFirestoreHash === currentLocalHash && inMemoryReservationsCache && inMemoryReservationsCache.length > 0) {
-            // Update lastFirestoreHash metadata without rewriting full payload
             if (currentMeta) {
               setLocalCacheMetadata({
                 ...currentMeta,
@@ -713,7 +736,6 @@ export function subscribeToReservations(
               });
             }
             inMemoryLastFirestoreHash = incomingFirestoreHash;
-            // Notify UI that data is verified from Firestore without triggering unnecessary mutations
             onData(sorted, true, false, syncTimestamp);
             return;
           }
@@ -864,6 +886,11 @@ export async function saveReservation(reserva: Reservation): Promise<void> {
     console.warn(`[Validation Warning] Reserva ${reserva.id} contiene campos no válidos:`, validation.errors);
   }
 
+  // Validation for Chilean Holidays: require CCD authorization key
+  if (isChileanHoliday(reserva.fecha) && !verifyHolidayOverrideKey(reserva.claveAutorizacion || '')) {
+    throw new Error(`La fecha ${reserva.fecha} corresponde a un día feriado en Chile y requiere la clave de autorización especial "CCD".`);
+  }
+
   unrecordDeletedId(reserva.id);
 
   // Optimistic Cache Update with Versioning & Hash Refresh
@@ -992,6 +1019,13 @@ export async function saveReservationsBatch(reservas: readonly Reservation[]): P
       console.warn(`[Batch Validation Warning] Reserva ${r.id} (${r.fecha} ${r.horaInicio}):`, val.errors);
     }
   });
+
+  // Validation for Chilean Holidays in Batch
+  for (const r of reservas) {
+    if (isChileanHoliday(r.fecha) && !verifyHolidayOverrideKey(r.claveAutorizacion || '')) {
+      throw new Error(`La fecha ${r.fecha} corresponde a un día feriado en Chile y requiere la clave de autorización especial "CCD".`);
+    }
+  }
 
   unrecordDeletedIds(reservas.map(r => r.id));
 

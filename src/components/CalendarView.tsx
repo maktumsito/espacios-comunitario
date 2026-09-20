@@ -289,18 +289,36 @@ const CalendarDayCell = memo<CalendarDayCellProps>(({
     }
   }, [onNavigateToDay, day]);
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (onNavigateToDay) {
+        onNavigateToDay(day);
+      } else {
+        onSelectDay(day);
+      }
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      onSelectDay(day);
+    }
+  }, [onNavigateToDay, onSelectDay, day]);
+
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={handleCellClick}
       onDoubleClick={handleDoubleClick}
-      className={`min-h-[80px] sm:min-h-[90px] lg:min-h-[100px] p-1.5 sm:p-2 transition-all cursor-pointer flex flex-col justify-between group hover:bg-blue-50/30 ${
+      onKeyDown={handleKeyDown}
+      aria-label={`Día ${format(day, 'd MMMM yyyy', { locale: es })}: ${dayReservations.length} ${dayReservations.length === 1 ? 'actividad' : 'actividades'}${holidayInfo ? `, feriado: ${holidayInfo.name}` : ''}`}
+      className={`min-h-[80px] sm:min-h-[90px] lg:min-h-[100px] p-1.5 sm:p-2 transition-all cursor-pointer flex flex-col justify-between group hover:bg-blue-50/30 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:z-10 ${
         holidayInfo
           ? 'bg-rose-50/40 border-t border-rose-200'
           : !isCurrentMonth
           ? 'opacity-40 bg-slate-50/40'
           : 'bg-white'
       } ${isSelected ? 'ring-2 ring-blue-600 bg-blue-50/40 z-10' : ''}`}
-      title="Clic para seleccionar agenda • Doble clic para abrir en Uso Diario"
+      title="Clic o Espacio para seleccionar • Doble clic o Enter para abrir en Uso Diario"
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-1">
@@ -390,9 +408,11 @@ const AgendaReservationCard = memo<AgendaReservationCardProps>(({
   const isCancelled = reservation.estado === 'cancelada';
 
   return (
-    <div
+    <button
+      type="button"
       onClick={handleClick}
-      className={`bg-slate-50 hover:bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-3 space-y-2 transition-all shadow-xs cursor-pointer relative overflow-hidden group ${
+      aria-label={`Ver detalles de reserva: ${reservation.descripcion || reservation.tipoActividad}, ${reservation.horaInicio} a ${reservation.horaFin} en ${reservation.espacio}, solicitante ${reservation.responsable}`}
+      className={`w-full text-left bg-slate-50 hover:bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-3 space-y-2 transition-all shadow-xs cursor-pointer relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-blue-500 focus:z-10 ${
         isCancelled ? 'opacity-60 bg-slate-100/80' : ''
       }`}
     >
@@ -459,7 +479,7 @@ const AgendaReservationCard = memo<AgendaReservationCardProps>(({
           <span className="truncate">{reservation.responsable}</span>
         </div>
       </div>
-    </div>
+    </button>
   );
 });
 AgendaReservationCard.displayName = 'AgendaReservationCard';

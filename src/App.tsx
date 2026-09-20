@@ -232,8 +232,8 @@ export default function App() {
     checkRatingAllowed
   } = useRatingsState(reservations);
 
-  // 6. Audit Logs Hook
-  const { auditLogs } = useAuditLogs();
+  // 6. Audit Logs Hook (On-demand listener only when modal is open)
+  const { auditLogs } = useAuditLogs(isAuditLogOpen);
 
   // 7. Space Maintenance Blocks State & Synchronization Hook
   const {
@@ -273,7 +273,7 @@ export default function App() {
   useKeyboardShortcuts({
     onToggleCommandPalette: () => setIsCommandPaletteOpen((prev) => !prev),
     onOpenNewReservation: () => {
-      openCreateModal();
+      openCreateModal({ date: format(selectedDailyDate || new Date(), 'yyyy-MM-dd') });
     },
     isCommandPaletteOpen
   });
@@ -1650,7 +1650,7 @@ export default function App() {
           requireAuth(() => {
             setEditingReservation(null);
             setIsDuplicating(false);
-            setPrefillDate(format(new Date(), 'yyyy-MM-dd'));
+            setPrefillDate(format(selectedDailyDate || new Date(), 'yyyy-MM-dd'));
             const initialSpace = filters.espacio || spaces[0]?.name || 'TATAMI';
             setPrefillSpace(initialSpace);
             setPrefillStartTime('10:00');
@@ -1913,6 +1913,7 @@ export default function App() {
               }
               spaces={spaces}
               initialDate={selectedDailyDate}
+              onDateChange={(date) => setSelectedDailyDate(date)}
               spaceBlocks={spaceBlocks}
               onNavigateToMaintenance={() => {
                 setAdminSubTab('maintenance');
@@ -2423,7 +2424,7 @@ export default function App() {
           setIsDetailModalOpen(true);
         }}
         onNavigateToView={(view) => setCurrentView(view)}
-        onNewReservation={() => openCreateModal()}
+        onNewReservation={() => openCreateModal({ date: format(selectedDailyDate || new Date(), 'yyyy-MM-dd') })}
         onOpenPrintModal={() => setIsGlobalPrintModalOpen(true)}
         onOpenGmailDispatch={() => openGmailDispatchModal()}
         onOpenAuditLog={() => {

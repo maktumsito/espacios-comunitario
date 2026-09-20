@@ -695,3 +695,75 @@ export function checkSpaceCapacityWarning(
   };
 }
 
+// ==========================================
+// 8. CHILEAN PHONE NUMBER VALIDATION
+// ==========================================
+
+export interface ChileanPhoneValidationResult {
+  isValid: boolean;
+  raw: string;
+  cleanDigits: string; // 9 digits (e.g. 912345678)
+  formatted: string; // e.g. "+56 9 1234 5678"
+  telUrl: string; // e.g. "tel:+56912345678"
+  whatsappUrl: string; // e.g. "https://wa.me/56912345678"
+  error?: string;
+}
+
+/**
+ * Validates and formats Chilean phone numbers for reliable tel: and WhatsApp wa.me links.
+ * Handles +56 9, 569, 9XXXXXXXX, and legacy 8-digit mobile numbers.
+ */
+export function validateAndFormatChileanPhone(rawPhone?: string): ChileanPhoneValidationResult {
+  if (!rawPhone || typeof rawPhone !== 'string') {
+    return {
+      isValid: false,
+      raw: '',
+      cleanDigits: '',
+      formatted: '',
+      telUrl: '',
+      whatsappUrl: '',
+      error: 'Número de teléfono no ingresado'
+    };
+  }
+
+  const raw = rawPhone.trim();
+  let digits = raw.replace(/\D/g, '');
+
+  // Strip international country code prefix (56) if present
+  if (digits.startsWith('56')) {
+    digits = digits.slice(2);
+  }
+
+  // Auto-upgrade legacy 8-digit Chilean mobile number to 9 digits (prepending 9)
+  if (digits.length === 8) {
+    digits = `9${digits}`;
+  }
+
+  // Valid Chilean numbers must have exactly 9 digits
+  if (digits.length !== 9) {
+    return {
+      isValid: false,
+      raw,
+      cleanDigits: digits,
+      formatted: raw,
+      telUrl: '',
+      whatsappUrl: '',
+      error: 'Teléfono incompleto o inválido (debe tener 9 dígitos, ej: +56 9 1234 5678)'
+    };
+  }
+
+  const fullInternational = `56${digits}`;
+  const formatted = `+56 9 ${digits.slice(1, 5)} ${digits.slice(5)}`;
+  const telUrl = `tel:+${fullInternational}`;
+  const whatsappUrl = `https://wa.me/${fullInternational}`;
+
+  return {
+    isValid: true,
+    raw,
+    cleanDigits: digits,
+    formatted,
+    telUrl,
+    whatsappUrl
+  };
+}
+

@@ -93,8 +93,8 @@ export const RatingsDashboardView: React.FC<RatingsDashboardViewProps> = ({
 
         if (!matchSearch) return false;
 
-        if (filterMode === 'incidents') return r.huboDanos || r.dejoBasura || r.puntajeGeneral <= 2;
-        if (filterMode === 'positive') return r.puntajeGeneral >= 4 && !r.huboDanos;
+        if (filterMode === 'incidents') return r.huboDanos || r.dejoBasura || (typeof r.puntajeGeneral === 'number' && r.puntajeGeneral > 0 && r.puntajeGeneral <= 2);
+        if (filterMode === 'positive') return (typeof r.puntajeGeneral === 'number' && r.puntajeGeneral >= 4 && !r.huboDanos);
 
         return true;
       });
@@ -104,8 +104,11 @@ export const RatingsDashboardView: React.FC<RatingsDashboardViewProps> = ({
   const stats = useMemo(() => {
     const bdayRatings = ratings.filter(r => r.esCumpleanos !== false && r.fecha >= oneWeekAgoStr);
     const total = bdayRatings.length;
-    const incidents = bdayRatings.filter(r => r.huboDanos || r.dejoBasura || r.puntajeGeneral <= 2).length;
-    const avg = total > 0 ? bdayRatings.reduce((acc, r) => acc + r.puntajeGeneral, 0) / total : null;
+    const incidents = bdayRatings.filter(r => r.huboDanos || r.dejoBasura || (typeof r.puntajeGeneral === 'number' && r.puntajeGeneral > 0 && r.puntajeGeneral <= 2)).length;
+    const validRatings = bdayRatings.filter(r => typeof r.puntajeGeneral === 'number' && !isNaN(r.puntajeGeneral) && r.puntajeGeneral > 0);
+    const avg = validRatings.length > 0
+      ? validRatings.reduce((acc, r) => acc + r.puntajeGeneral, 0) / validRatings.length
+      : null;
     return { total, incidents, avg, pending: pendingBirthdayReservations.length };
   }, [ratings, pendingBirthdayReservations, oneWeekAgoStr]);
 

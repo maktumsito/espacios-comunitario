@@ -414,6 +414,34 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
   const [holidayOverrideKey, setHolidayOverrideKey] = useState<string>('');
   const [includeHolidaysInSeries, setIncludeHolidaysInSeries] = useState<boolean>(false);
 
+  // Invalidate holiday authorization if the target date or date pattern changes
+  const prevHolidayDateRef = useRef<string>(formData.fecha);
+  const prevHolidaySpecificRef = useRef<string>(specificDates.join(','));
+  const prevHolidayPatternRef = useRef<string>(`${recurrenceStartDate}_${recurrenceEndDate}_${selectedDays.join(',')}`);
+
+  useEffect(() => {
+    if (prevHolidayDateRef.current !== formData.fecha) {
+      prevHolidayDateRef.current = formData.fecha;
+      setHolidayOverrideKey('');
+    }
+  }, [formData.fecha]);
+
+  useEffect(() => {
+    const currentSpecific = specificDates.join(',');
+    if (prevHolidaySpecificRef.current !== currentSpecific) {
+      prevHolidaySpecificRef.current = currentSpecific;
+      setHolidayOverrideKey('');
+    }
+  }, [specificDates]);
+
+  useEffect(() => {
+    const currentPattern = `${recurrenceStartDate}_${recurrenceEndDate}_${selectedDays.join(',')}`;
+    if (prevHolidayPatternRef.current !== currentPattern) {
+      prevHolidayPatternRef.current = currentPattern;
+      setHolidayOverrideKey('');
+    }
+  }, [recurrenceStartDate, recurrenceEndDate, selectedDays]);
+
   // Clave de autorización para préstamo fuera de horario regular (ccd2026)
   const [extendedAuthKey, setExtendedAuthKey] = useState<string>('');
 
@@ -955,8 +983,8 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
   // Single date holiday info
   const singleDateHolidayInfo = useMemo(() => {
-    return getChileanHolidayInfo(formData.fecha);
-  }, [formData.fecha]);
+    return getChileanHolidayInfo(formData.fecha || editingReservation?.fecha || '');
+  }, [formData.fecha, editingReservation?.fecha]);
 
   // Real-time validations for time range, second space, RUT, Email, pattern dates, specific dates, description, and capacity warnings
   const timeValidation = useMemo(() => {
@@ -1727,18 +1755,63 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
   ]);
 
   // Progressive Wizard Completion and Validation Logic
-  const isStep1Completed = useMemo(() => {
-    return Boolean(
-      formData.espacio &&
-      (formData.fecha || editingReservation?.fecha) &&
-      timeValidation.isValid &&
-      (!enableSingleSecondSpace || singleSecondTimeValidation.isValid)
-    );
-  }, [formData.espacio, formData.fecha, editingReservation?.fecha, timeValidation.isValid, enableSingleSecondSpace, singleSecondTimeValidation.isValid]);
-
   const hasStep1Conflict = useMemo(() => {
     return Boolean((conflicts.length > 0 || candidateConflictDates.length > 0) && !allowConflictOverride);
   }, [conflicts.length, candidateConflictDates.length, allowConflictOverride]);
+
+  const isStep1Completed = useMemo(() => {
+    if (!formData.espacio) return false;
+    const targetDate = formData.fecha || editingReservation?.fecha;
+    if (!targetDate) return false;
+    if (!timeValidation.isValid) return false;
+    if (enableSingleSecondSpace && !singleSecondTimeValidation.isValid) return false;
+    if (hasStep1Conflict) return false;
+    if (loanScheduleCheck.requiresAuthorization && !isExtensionAuthorized) return false;
+
+    // Single date mode holiday check
+    if (bookingMode === 'single') {
+      if (singleDateHolidayInfo && !isHolidayAuthorized) return false;
+    }
+
+    // Specific dates mode holiday check
+    if (bookingMode === 'specific') {
+      if (specificDates.length === 0) return false;
+      if (specificHolidayAnalysis.omittedHolidays.length > 0) {
+        if (includeHolidaysInSeries || isHolidayAuthorized) {
+          if (!isHolidayAuthorized) return false;
+        } else {
+          if (specificHolidayAnalysis.validDates.length === 0) return false;
+        }
+      }
+    }
+
+    // Pattern mode holiday check
+    if (bookingMode === 'pattern') {
+      if (includeHolidaysInSeries && !isHolidayAuthorized && patternHolidayAnalysis.omittedHolidays.length > 0) return false;
+      if (generatedDates.length === 0) return false;
+    }
+
+    return true;
+  }, [
+    formData.espacio,
+    formData.fecha,
+    editingReservation?.fecha,
+    timeValidation.isValid,
+    enableSingleSecondSpace,
+    singleSecondTimeValidation.isValid,
+    hasStep1Conflict,
+    loanScheduleCheck.requiresAuthorization,
+    isExtensionAuthorized,
+    bookingMode,
+    singleDateHolidayInfo,
+    isHolidayAuthorized,
+    specificDates.length,
+    specificHolidayAnalysis.omittedHolidays.length,
+    specificHolidayAnalysis.validDates.length,
+    includeHolidaysInSeries,
+    patternHolidayAnalysis.omittedHolidays.length,
+    generatedDates.length
+  ]);
 
   const isStep2Completed = useMemo(() => {
     return Boolean(
@@ -1767,14 +1840,68 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
       if (showAlert) showFormFeedback(`⚠️ ${singleSecondTimeValidation.error || 'La hora de término del segundo espacio debe ser posterior a la de inicio.'}`, 'warning');
       return false;
     }
-    if (bookingMode === 'specific' && specificDates.length === 0) {
-      if (showAlert) showFormFeedback('⚠️ Por favor selecciona al menos una fecha específica en el calendario.', 'warning');
+
+    // Holiday validation for single date mode
+    if (bookingMode === 'single') {
+      const targetDate = formData.fecha || editingReservation?.fecha;
+      if (!targetDate) {
+        if (showAlert) showFormFeedback('⚠️ Por favor indica la fecha de la reserva.', 'warning');
+        return false;
+      }
+      if (singleDateHolidayInfo && !isHolidayAuthorized) {
+        if (showAlert) {
+          showFormFeedback(
+            `🚫 FECHA EN DÍA FERIADO NACIONAL: El día ${formatDateDDMMYYYY(targetDate)} es feriado (${singleDateHolidayInfo.name}). Para autorizarla debes ingresar la clave especial CCD.`,
+            'warning'
+          );
+        }
+        return false;
+      }
+    }
+
+    // Holiday & date validation for specific dates mode
+    if (bookingMode === 'specific') {
+      if (specificDates.length === 0) {
+        if (showAlert) showFormFeedback('⚠️ Por favor selecciona al menos una fecha específica en el calendario.', 'warning');
+        return false;
+      }
+      if (specificHolidayAnalysis.omittedHolidays.length > 0) {
+        if (includeHolidaysInSeries || isHolidayAuthorized) {
+          if (!isHolidayAuthorized) {
+            if (showAlert) showFormFeedback('🚫 Para incluir reservas en días feriados de Chile, debes ingresar la clave de autorización especial "CCD" correcta.', 'warning');
+            return false;
+          }
+        } else {
+          if (specificHolidayAnalysis.validDates.length === 0) {
+            if (showAlert) {
+              showFormFeedback(`🚫 Todas las fechas seleccionadas son días feriados en Chile (${specificHolidayAnalysis.omittedHolidays.map(h => `${formatDateDDMMYYYY(h.date)}: ${h.holiday.name}`).join(', ')}). Los feriados están bloqueados por defecto. Para autorizarlos debes ingresar la clave especial CCD.`, 'warning');
+            }
+            return false;
+          }
+        }
+      }
+    }
+
+    // Holiday & date validation for pattern mode
+    if (bookingMode === 'pattern') {
+      if (includeHolidaysInSeries && !isHolidayAuthorized && patternHolidayAnalysis.omittedHolidays.length > 0) {
+        if (showAlert) showFormFeedback('🚫 Para incluir los días feriados en la serie semanal, debes ingresar la clave de autorización especial "CCD" correcta.', 'warning');
+        return false;
+      }
+      if (generatedDates.length === 0) {
+        if (showAlert) showFormFeedback('⚠️ El patrón semanal no genera fechas válidas en el rango seleccionado.', 'warning');
+        return false;
+      }
+    }
+
+    // Extended schedule authorization check
+    if (loanScheduleCheck.requiresAuthorization && !isExtensionAuthorized) {
+      if (showAlert) {
+        showFormFeedback('⚠️ Autorización requerida: La actividad opera en horario extendido (antes de las 08:30 hrs o después de las 22:00 hrs). Ingresa la clave oficial "ccd2026" para autorizarla o ingresa con perfil de Administrador / Coordinador.', 'warning');
+      }
       return false;
     }
-    if (bookingMode === 'pattern' && generatedDates.length === 0) {
-      if (showAlert) showFormFeedback('⚠️ El patrón semanal no genera fechas válidas en el rango seleccionado.', 'warning');
-      return false;
-    }
+
     if (hasStep1Conflict) {
       if (showAlert) {
         showFormFeedback('⚠️ Topamiento detectado: El espacio ya está ocupado en ese horario. Puedes resolverlo con un clic (ej: "Mover después"), activar la casilla "Permitir guardar a pesar del conflicto", o cambiar de espacio antes de continuar.', 'warning');
@@ -3047,6 +3174,8 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
             generateFullSeries={generateFullSeries}
             specificDates={specificDates}
             generatedDates={generatedDates}
+            isStep1Completed={isStep1Completed}
+            isStep2Completed={isStep2Completed}
           />
         </form>
       </div>

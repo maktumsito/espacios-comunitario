@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -867,6 +868,25 @@ async function startServer() {
 
   app.post('/api/email/trigger-monday', requireAuth, async (req, res) => {
     res.json({ success: false, message: 'El envío automático de correos de fin de semana ha sido cancelado por configuración.' });
+  });
+
+  // -------------------------------------------------------------
+  // CCD HOLIDAY OVERRIDE VALIDATION ENDPOINT
+  // -------------------------------------------------------------
+  app.post('/api/auth/verify-holiday-override', (req, res) => {
+    try {
+      const { key } = req.body || {};
+      if (!key || typeof key !== 'string') {
+        return res.status(400).json({ valid: false, error: 'Clave requerida' });
+      }
+      const normalizedKey = key.trim().toUpperCase();
+      const hash = crypto.createHash('sha256').update(normalizedKey).digest('hex');
+      const EXPECTED_HASH = '66dfd0071d636ea2ae067345ef9f1c816baa45f411800f36a6c29eee4ce7aa8f';
+      const isValid = hash === EXPECTED_HASH;
+      return res.json({ valid: isValid });
+    } catch (e: any) {
+      return res.status(500).json({ valid: false, error: e?.message || 'Error validando clave' });
+    }
   });
 
   // -------------------------------------------------------------

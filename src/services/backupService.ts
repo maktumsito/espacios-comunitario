@@ -38,6 +38,7 @@ export interface DatabaseBackupMetadata {
   descripcion: string;
   totalPartes?: number;
   esChunked?: boolean;
+  storageStatus?: 'firestore_confirmed' | 'local_only';
 }
 
 export interface DatabaseBackupChunk {
@@ -212,6 +213,9 @@ function saveLocalBackupHistory(items: DatabaseBackupMetadata[]): void {
 
 export const BACKUP_CHUNK_SIZE = 400_000; // 400KB characters to stay comfortably under Firestore's 1MB limit
 
+// Concurrency lock to prevent duplicate simultaneous backup runs (e.g. from React Strict Mode mount)
+let backupInProgressPromise: Promise<DatabaseBackupRecord> | null = null;
+
 export interface CreateBackupOptions {
   tipo?: 'automatica_15_dias' | 'manual';
   creadoPor?: string;
@@ -224,11 +228,18 @@ export interface CreateBackupOptions {
  * Stores the backup in Firestore `copias_seguridad` using chunking to prevent exceeding Firestore's 1MB document limit, and updates local history.
  */
 export async function createDatabaseBackup(options: CreateBackupOptions = {}): Promise<DatabaseBackupRecord> {
-  const now = new Date();
-  const dateStr = formatLocalDateString(now);
-  const isoStr = now.toISOString();
-  const tipo = options.tipo || 'automatica_15_dias';
-  const creadoPor = options.creadoPor || (tipo === 'automatica_15_dias' ? 'Sistema (Automático cada 15 días)' : 'Usuario Administrador');
+  if (backupInProgressPromise) {
+    console.log('[BackupService] Hay una creación de copia en curso, reutilizando la misma operación...');
+    return backupInProgressPromise;
+  }
+
+  backupInProgressPromise = (async () => {
+    try {
+      const now = new Date();
+      const dateStr = formatLocalDateString(now);
+      const isoStr = now.toISOString();
+      const tipo = options.tipo || 'automatica_15_dias';
+      const creadoPor = options.creadoPor || (tipo === 'automatica_15_dias' ? 'Sistema (Automático cada 15 días)' : 'Usuario Administrador');
 
   // 1. Gather all collections
   const rawReservations = options.customReservations || getLocalCache();
@@ -367,6 +378,12 @@ export async function createDatabaseBackup(options: CreateBackupOptions = {}): P
   });
 
   return fullRecord;
+    } finally {
+      backupInProgressPromise = null;
+    }
+  })();
+
+  return backupInProgressPromise;
 }
 
 // ============================================================================
@@ -453,7 +470,10 @@ export async function getDatabaseBackupsList(): Promise<DatabaseBackupMetadata[]
   const localItems = getLocalBackupHistory();
   const map = new Map<string, DatabaseBackupMetadata>();
 
-  localItems.forEach(item => map.set(item.id, item));
+  localItems.forEach(item => map.set(item.id, {
+    ...item,
+    storageStatus: 'local_only'
+  }));
 
   try {
     const db = getDb();
@@ -478,7 +498,8 @@ export async function getDatabaseBackupsList(): Promise<DatabaseBackupMetadata[]
         tamanoBytes: data.tamanoBytes || 0,
         descripcion: data.descripcion || '',
         totalPartes: data.totalPartes,
-        esChunked: data.esChunked
+        esChunked: data.esChunked,
+        storageStatus: 'firestore_confirmed'
       });
     });
   } catch (err) {
@@ -487,7 +508,32 @@ export async function getDatabaseBackupsList(): Promise<DatabaseBackupMetadata[]
 
   const list = Array.from(map.values());
   list.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  return list;
+
+  // Deduplicate entries that share identical checksum or identical minute + totalReservas + tamanoBytes
+  const deduplicated: DatabaseBackupMetadata[] = [];
+  const signatureMap = new Map<string, DatabaseBackupMetadata>();
+
+  for (const item of list) {
+    const minuteStr = item.timestamp ? item.timestamp.slice(0, 16) : item.fecha;
+    const signature = item.checksum
+      ? `CHK_${item.checksum}`
+      : `SIG_${minuteStr}_${item.totalReservas}_${item.tamanoBytes}`;
+
+    const existing = signatureMap.get(signature);
+    if (!existing) {
+      signatureMap.set(signature, item);
+      deduplicated.push(item);
+    } else if (existing.storageStatus === 'local_only' && item.storageStatus === 'firestore_confirmed') {
+      // Prioritize the firestore-confirmed record
+      const idx = deduplicated.indexOf(existing);
+      if (idx >= 0) {
+        deduplicated[idx] = item;
+      }
+      signatureMap.set(signature, item);
+    }
+  }
+
+  return deduplicated;
 }
 
 /**

@@ -4,6 +4,7 @@ import { AuthUser, isCoordinatorOrAdmin } from '../services/authService';
 import { normalizeSpaceName } from '../data/spacesData';
 import { formatDateYYYYMMDD, parseDateToNoon } from '../utils/dateUtils';
 import { getFuzzyMatchIds } from '../utils/fuzzySearch';
+import { validateAndFormatChileanPhone } from '../utils/validationUtils';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -285,28 +286,6 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
       return { status: 'upcoming', label: 'Próxima' };
     }
     return { status: 'passed', label: 'Finalizada' };
-  };
-
-  // Clean phone number for tel: and wa.me links
-  const formatPhoneForLink = (phoneStr?: string): { tel: string; whatsapp: string } | null => {
-    if (!phoneStr) return null;
-    const digits = phoneStr.replace(/\D/g, '');
-    if (!digits) return null;
-
-    // Chilean numbers default: ensure 56 prefix for WhatsApp and tel
-    let cleanNumber = digits;
-    if (cleanNumber.startsWith('56')) {
-      // already starts with 56
-    } else if (cleanNumber.length === 8) {
-      cleanNumber = `569${cleanNumber}`;
-    } else {
-      cleanNumber = `56${cleanNumber}`;
-    }
-
-    return {
-      tel: `tel:+${cleanNumber}`,
-      whatsapp: `https://wa.me/${cleanNumber}`
-    };
   };
 
 
@@ -648,7 +627,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
             const isConflict = conflictReservationIds?.has(res.id);
             const liveState = getLiveStatus(res.horaInicio, res.horaFin);
             const isExpanded = expandedCards.has(res.id);
-            const phoneLinks = formatPhoneForLink(res.telefonoContacto);
+            const phoneInfo = validateAndFormatChileanPhone(res.telefonoContacto);
             const existingRating = ratingByReservationId.get(res.id);
             const isRealizada = res.realizada === 'Sí';
 
@@ -743,30 +722,42 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                     </div>
 
                     {/* Quick direct contact links for mobile phone (Call / WhatsApp / Email) */}
-                    {(phoneLinks || res.emailContacto) && (
+                    {(res.telefonoContacto || res.emailContacto) && (
                       <div
                         className="flex flex-wrap items-center gap-1.5 pt-1"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {phoneLinks && (
-                          <>
-                            <a
-                              href={phoneLinks.tel}
-                              className="min-h-[36px] inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold transition"
+                        {res.telefonoContacto && (
+                          phoneInfo.isValid ? (
+                            <>
+                              <a
+                                href={phoneInfo.telUrl}
+                                className="min-h-[36px] inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold transition"
+                                title={`Llamar a ${phoneInfo.formatted}`}
+                              >
+                                <Phone className="w-3 h-3 text-emerald-600" />
+                                <span>Llamar</span>
+                              </a>
+                              <a
+                                href={phoneInfo.whatsappUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="min-h-[36px] inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-green-800 text-[11px] font-bold transition"
+                                title={`Abrir WhatsApp con ${phoneInfo.formatted}`}
+                              >
+                                <MessageCircle className="w-3 h-3 text-green-600" />
+                                <span>WhatsApp</span>
+                              </a>
+                            </>
+                          ) : (
+                            <span
+                              className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-medium"
+                              title={phoneInfo.error || 'Número de teléfono incompleto'}
                             >
-                              <Phone className="w-3 h-3 text-emerald-600" />
-                              <span>Llamar</span>
-                            </a>
-                            <a
-                              href={phoneLinks.whatsapp}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="min-h-[36px] inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-green-800 text-[11px] font-bold transition"
-                            >
-                              <MessageCircle className="w-3 h-3 text-green-600" />
-                              <span>WhatsApp</span>
-                            </a>
-                          </>
+                              <Phone className="w-3 h-3 text-rose-500 shrink-0" />
+                              <span>Teléfono no válido ({res.telefonoContacto})</span>
+                            </span>
+                          )
                         )}
                         {res.emailContacto && (
                           <a

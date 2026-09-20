@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Suspense, useCallback } from 'react';
 import { Reservation, SpaceInfo, FilterState, SpaceBlock } from '../types';
 import { SPACES_LIST, normalizeSpaceName } from '../data/spacesData';
 import { timeToMinutes, formatMinutesToTime, getConflictReservationIds } from '../utils/conflictDetector';
@@ -32,9 +32,13 @@ import {
   endOfDay
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { PrintScheduleModal } from './PrintScheduleModal';
 import { validateStrictCalendarDate, clampAndFixCalendarDate } from '../utils/validationUtils';
 import { useReservationDateIndex } from '../utils/reservationIndex';
+import { formatActivitiesCount } from '../utils/pluralUtils';
+
+const PrintScheduleModal = React.lazy(() =>
+  import('./PrintScheduleModal').then((m) => ({ default: m.PrintScheduleModal }))
+);
 
 interface DailyUsageViewProps {
   reservations: Reservation[];
@@ -55,6 +59,7 @@ interface DailyUsageViewProps {
   onUpdateReservation?: (reserva: Reservation) => Promise<boolean | void> | boolean | void;
   onReorderSpaces?: (spaces: SpaceInfo[]) => void;
   onNavigateToMaintenance?: () => void;
+  onDateChange?: (date: Date) => void;
 }
 
 // Ordered space list matching the user's required layout exactly:
@@ -94,7 +99,8 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
   onNewReservationWithSlot,
   onUpdateReservation,
   onReorderSpaces,
-  onNavigateToMaintenance
+  onNavigateToMaintenance,
+  onDateChange
 }) => {
   // Default date: passed initialDate or current real date
   const [selectedDate, setSelectedDate] = useState<Date>(() => initialDate || new Date());
@@ -108,6 +114,11 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
       setSelectedDate(initialDate);
     }
   }, [initialDate]);
+
+  const updateSelectedDate = useCallback((newDate: Date) => {
+    setSelectedDate(newDate);
+    onDateChange?.(newDate);
+  }, [onDateChange]);
 
   // Drag & Drop State for Reservations
   const [draggedReservation, setDraggedReservation] = useState<Reservation | null>(null);
@@ -678,9 +689,9 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
   };
 
   // Quick navigation handlers
-  const handlePrevDay = () => setSelectedDate(subDays(selectedDate, 1));
-  const handleNextDay = () => setSelectedDate(addDays(selectedDate, 1));
-  const handleToday = () => setSelectedDate(new Date());
+  const handlePrevDay = () => updateSelectedDate(subDays(selectedDate, 1));
+  const handleNextDay = () => updateSelectedDate(addDays(selectedDate, 1));
+  const handleToday = () => updateSelectedDate(new Date());
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -715,7 +726,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
           <div className="flex items-center space-x-2">
             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>
-              <strong>¡Atención!</strong> Se detectaron <strong>{conflictIdsToday.size}</strong> actividades con topamiento de horario en esta fecha.
+              <strong>¡Atención!</strong> Se detectaron <strong>{conflictIdsToday.size}</strong> {conflictIdsToday.size === 1 ? 'actividad' : 'actividades'} con topamiento de horario en esta fecha.
             </span>
           </div>
           <span className="text-[11px] text-rose-700 bg-white px-2 py-0.5 rounded-lg border border-rose-200 font-semibold">
@@ -843,7 +854,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                   const validation = validateStrictCalendarDate(targetVal, 2020, 2035);
                   if (validation.isValid && validation.date) {
                     setDateErrorMessage(null);
-                    setSelectedDate(validation.date);
+                    updateSelectedDate(validation.date);
                     if (wasAdjusted && message) {
                       setToastMessage({
                         text: 'Fecha ajustada automáticamente',
@@ -862,10 +873,14 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
 
           {/* Quick Filter in Daily Timeline */}
           <div className="relative flex items-center">
+            <label htmlFor="input-daily-search" className="sr-only">
+              Buscar actividades en este día
+            </label>
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               id="input-daily-search"
               type="text"
+              aria-label="Buscar actividades en este día"
               placeholder="Buscar en este día..."
               value={searchQuery}
               onChange={(e) => handleDailySearchChange(e.target.value)}
@@ -916,7 +931,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
               </span>
             ))}
             <span className="text-[11px] text-blue-700 ml-1">
-              (Mostrando <strong>{dayReservations.length}</strong> de <strong>{allReservationsForToday.length}</strong> actividades del día)
+              (Mostrando <strong>{dayReservations.length}</strong> de <strong>{formatActivitiesCount(allReservationsForToday.length)}</strong> del día)
             </span>
           </div>
           <button
@@ -947,7 +962,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                   Sin coincidencias con los filtros activos para este día
                 </div>
                 <p className="text-xs text-amber-800 mt-0.5">
-                  Hay <strong>{allReservationsForToday.length} actividades programadas</strong> en esta fecha ({format(selectedDate, 'dd-MM-yyyy')}) que están ocultas por el filtro actual ({activeFilterDescriptions.join(', ')}).
+                  Hay <strong>{formatActivitiesCount(allReservationsForToday.length)} programadas</strong> en esta fecha ({format(selectedDate, 'dd-MM-yyyy')}) que están ocultas por el filtro actual ({activeFilterDescriptions.join(', ')}).
                 </p>
               </div>
             </div>
@@ -958,7 +973,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
               className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs transition shadow-xs flex items-center space-x-1.5 cursor-pointer whitespace-nowrap shrink-0"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Limpiar filtros (Recuperar {allReservationsForToday.length} actividades)</span>
+              <span>Limpiar filtros (Recuperar {formatActivitiesCount(allReservationsForToday.length)})</span>
             </button>
           </div>
         ) : (
@@ -1431,6 +1446,9 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                         return (
                           <div
                             key={res.id}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Reserva de ${res.tipoActividad}, ${res.horaInicio} a ${res.horaFin}, responsable ${res.responsable}. Presiona Enter o Espacio para ver detalles.`}
                             draggable
                             onDragStart={(e) => handleReservationDragStart(e, res)}
                             onDragEnd={handleReservationDragEnd}
@@ -1438,13 +1456,20 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                               e.stopPropagation();
                               onSelectReservation(res);
                             }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onSelectReservation(res);
+                              }
+                            }}
                             style={{
                               top: `${topPosition + 2}px`,
                               height: `${cardHeight - 4}px`,
                               left: cardLeftStyle,
                               width: cardWidthStyle
                             }}
-                            className={`absolute rounded-lg ${paddingClass} ${styling.bg} border ${styling.border} ${styling.shadow} cursor-grab active:cursor-grabbing hover:scale-[1.02] hover:z-30 transition-all flex flex-col justify-between overflow-hidden select-none z-10 group/card ${
+                            className={`absolute rounded-lg ${paddingClass} ${styling.bg} border ${styling.border} ${styling.shadow} cursor-grab active:cursor-grabbing hover:scale-[1.02] hover:z-30 transition-all flex flex-col justify-between overflow-hidden select-none z-10 group/card focus:ring-2 focus:ring-blue-500 focus:outline-none focus:z-40 ${
                               isBeingDragged ? 'opacity-30 scale-95 ring-2 ring-blue-500' : ''
                             } ${isOverlapping ? 'ring-1 ring-rose-400/50' : ''}`}
                             title={`${isConflict || isOverlapping ? '⚠️ ¡TOPAMIENTO / RESERVAS PARALELAS!\n' : ''}${res.horaInicio} - ${res.horaFin}\nTipo: ${res.tipoActividad}${res.descripcion ? `\nDescripción: ${res.descripcion}` : ''}\n\n👉 ¡Arrastra esta tarjeta a cualquier espacio u horario para moverla!\n(Haz clic para ver detalles)`}
@@ -1590,19 +1615,23 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
           </div>
 
           <div className="flex items-center space-x-2 text-slate-500 font-mono text-[10px]">
-            <span>Total: <strong>{dayReservations.length}</strong> actividades en <strong>{activeSpaces.length}</strong> espacios</span>
+            <span>Total: <strong>{dayReservations.length}</strong> {dayReservations.length === 1 ? 'actividad' : 'actividades'} en <strong>{activeSpaces.length}</strong> {activeSpaces.length === 1 ? 'espacio' : 'espacios'}</span>
           </div>
         </div>
       </div>
 
-      {/* Print PDF Schedule Modal */}
-      <PrintScheduleModal
-        isOpen={isPrintModalOpen}
-        onClose={() => setIsPrintModalOpen(false)}
-        reservations={reservations}
-        spaces={spaces}
-        initialDate={dateStr}
-      />
+      {/* Print PDF Schedule Modal - Lazy Loaded with Suspense */}
+      {isPrintModalOpen && (
+        <Suspense fallback={null}>
+          <PrintScheduleModal
+            isOpen={isPrintModalOpen}
+            onClose={() => setIsPrintModalOpen(false)}
+            reservations={reservations}
+            spaces={spaces}
+            initialDate={dateStr}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

@@ -43,6 +43,8 @@ interface ReservationModalFooterProps {
   generateFullSeries: boolean;
   specificDates: readonly string[] | string[];
   generatedDates: readonly string[] | string[];
+  isStep1Completed?: boolean;
+  isStep2Completed?: boolean;
 }
 
 export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = React.memo(({
@@ -75,7 +77,9 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
   bookingMode,
   generateFullSeries,
   specificDates,
-  generatedDates
+  generatedDates,
+  isStep1Completed,
+  isStep2Completed
 }) => {
   return (
     <div className="flex items-center justify-between pt-4 border-t border-slate-200">
@@ -188,6 +192,7 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
           <button
             id="btn-wizard-next"
             type="button"
+            disabled={wizardStep === 1 ? !isStep1Completed : !isStep2Completed}
             onClick={() => {
               if (wizardStep === 1) {
                 if (validateStep1(true)) {
@@ -201,7 +206,11 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
                 }
               }
             }}
-            className="px-5 py-2.5 rounded-xl text-white text-xs font-bold shadow-xs transition bg-blue-600 hover:bg-blue-700 cursor-pointer flex items-center space-x-1.5"
+            className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold shadow-xs transition flex items-center space-x-1.5 ${
+              (wizardStep === 1 ? !isStep1Completed : !isStep2Completed)
+                ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
+            }`}
           >
             <span>{wizardStep === 1 ? 'Siguiente: Solicitante' : 'Siguiente: Detalles'}</span>
             <ChevronRight className="w-4 h-4" />
