@@ -255,12 +255,13 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
       {/* Row 3: Espacio, Fecha y Horarios */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="space-y-1.5 sm:col-span-2">
-          <label className="font-semibold text-slate-700 flex items-center space-x-1.5">
+          <label htmlFor="input-reserva-espacio" className="font-semibold text-slate-700 flex items-center space-x-1.5">
             <MapPin className="w-3.5 h-3.5 text-blue-500" />
             <span>Espacio Requerido *</span>
           </label>
           <select
             id="input-reserva-espacio"
+            aria-label="Espacio Requerido"
             value={formData.espacio || availableSpaces[0]?.name}
             onChange={(e) => setFormData({ ...formData, espacio: e.target.value })}
             className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs font-bold"
@@ -274,7 +275,7 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
-          <label className="font-semibold text-slate-700 flex items-center justify-between">
+          <label htmlFor="input-reserva-fecha" className="font-semibold text-slate-700 flex items-center justify-between">
             <span className="flex items-center space-x-1.5">
               <Calendar className="w-3.5 h-3.5 text-blue-500" />
               <span>
@@ -298,10 +299,11 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
           </label>
           <input
             id="input-reserva-fecha"
+            aria-label="Fecha de la reserva"
             type="date"
             required
             disabled={isEditingRecurring && updateScope !== 'single'}
-            value={formData.fecha || editingReservation?.fecha || ''}
+            value={formData.fecha || ''}
             onChange={(e) => handlePrimaryDateChange(e.target.value)}
             className={`w-full px-3.5 py-2.5 rounded-xl font-mono focus:outline-none focus:ring-2 shadow-xs ${
               isEditingRecurring && updateScope !== 'single'
@@ -323,12 +325,13 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
-          <label className="font-semibold text-slate-700 flex items-center space-x-1.5">
+          <label htmlFor="input-reserva-inicio" className="font-semibold text-slate-700 flex items-center space-x-1.5">
             <Clock className="w-3.5 h-3.5 text-blue-500" />
             <span>Hora Inicio *</span>
           </label>
           <input
             id="input-reserva-inicio"
+            aria-label="Hora de inicio de la reserva"
             type="time"
             required
             value={formData.horaInicio || '10:00'}
@@ -340,24 +343,19 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
               const prevEMin = timeStringToMinutes(prevEnd);
               const sMin = timeStringToMinutes(newStart);
 
-              // Preserve existing duration (e.g. 60 min, 90 min)
+              // Preserve existing duration (e.g. 60 min, 90 min) only if not overnight
               const currentDuration = (prevEMin > prevSMin) ? (prevEMin - prevSMin) : 60;
-
               let newEnd = prevEnd;
-              let autoOvernight = false;
 
-              if (!formData.terminaDiaSiguiente) {
+              if (!formData.terminaDiaSiguiente && sMin >= 0) {
                 const targetEndMin = Math.min(1439, sMin + currentDuration);
                 newEnd = formatMinutesToTime(targetEndMin);
-              } else {
-                autoOvernight = sMin >= 18 * 60 && prevEMin > 0 && prevEMin <= sMin;
               }
 
               setFormData(prev => ({
                 ...prev,
                 horaInicio: newStart,
-                horaFin: newEnd,
-                terminaDiaSiguiente: autoOvernight ? true : prev.terminaDiaSiguiente
+                horaFin: newEnd
               }));
             }}
             className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 shadow-xs font-bold ${
@@ -369,25 +367,21 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
-          <label className="font-semibold text-slate-700 flex items-center space-x-1.5">
+          <label htmlFor="input-reserva-fin" className="font-semibold text-slate-700 flex items-center space-x-1.5">
             <Clock className="w-3.5 h-3.5 text-blue-500" />
             <span>Hora Término *</span>
           </label>
           <input
             id="input-reserva-fin"
+            aria-label="Hora de término de la reserva"
             type="time"
             required
             value={formData.horaFin || '11:00'}
             onChange={(e) => {
               const newEnd = e.target.value;
-              const currentStart = formData.horaInicio || '10:00';
-              const sMin = timeStringToMinutes(currentStart);
-              const eMin = timeStringToMinutes(newEnd);
-              const autoOvernight = sMin >= 18 * 60 && eMin > 0 && eMin <= sMin;
               setFormData(prev => ({
                 ...prev,
-                horaFin: newEnd,
-                terminaDiaSiguiente: autoOvernight ? true : (sMin > 0 && eMin > sMin ? false : prev.terminaDiaSiguiente)
+                horaFin: newEnd
               }));
               if (enableSingleSecondSpace) {
                 setSingleSecondStartTime(newEnd);
@@ -720,12 +714,13 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
           {enableSingleSecondSpace && (
             <div className="pt-2.5 border-t border-blue-200/60 grid grid-cols-1 sm:grid-cols-4 gap-3 animate-fadeIn">
               <div className="space-y-1 sm:col-span-2">
-                <label className="text-xs font-semibold text-slate-700 flex items-center space-x-1">
+                <label htmlFor="select-single-second-space" className="text-xs font-semibold text-slate-700 flex items-center space-x-1">
                   <MapPin className="w-3 h-3 text-indigo-600" />
                   <span>2° Espacio *</span>
                 </label>
                 <select
                   id="select-single-second-space"
+                  aria-label="Segundo espacio requerido"
                   value={singleSecondSpace}
                   onChange={(e) => setSingleSecondSpace(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs font-bold text-xs"
@@ -739,11 +734,13 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 flex items-center space-x-1">
+                <label htmlFor="input-single-second-start" className="text-xs font-semibold text-slate-700 flex items-center space-x-1">
                   <Clock className="w-3 h-3 text-indigo-600" />
                   <span>Inicio 2° Espacio</span>
                 </label>
                 <input
+                  id="input-single-second-start"
+                  aria-label="Hora de inicio del segundo espacio"
                   type="time"
                   value={singleSecondStartTime}
                   onChange={(e) => setSingleSecondStartTime(e.target.value)}
@@ -754,11 +751,13 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 flex items-center space-x-1">
+                <label htmlFor="input-single-second-end" className="text-xs font-semibold text-slate-700 flex items-center space-x-1">
                   <Clock className="w-3 h-3 text-indigo-600" />
                   <span>Término 2° Espacio</span>
                 </label>
                 <input
+                  id="input-single-second-end"
+                  aria-label="Hora de término del segundo espacio"
                   type="time"
                   value={singleSecondEndTime}
                   onChange={(e) => setSingleSecondEndTime(e.target.value)}
@@ -868,7 +867,7 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
 
       {/* Modalidad de Reserva / Repetición */}
       <div className="space-y-1.5">
-        <label className="font-semibold text-slate-700 flex items-center justify-between">
+        <label htmlFor="input-reserva-recurrente" className="font-semibold text-slate-700 flex items-center justify-between">
           <span className="flex items-center space-x-1.5">
             <Repeat className="w-3.5 h-3.5 text-blue-600" />
             <span>Modalidad de Reserva / Repetición</span>
@@ -879,6 +878,7 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
         </label>
         <select
           id="input-reserva-recurrente"
+          aria-label="Modalidad de Reserva o Repetición"
           disabled={isEditingSingleOccurrence}
           value={isEditingSingleOccurrence ? 'single' : bookingMode}
           onChange={(e) => {

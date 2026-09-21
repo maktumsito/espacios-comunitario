@@ -87,6 +87,189 @@ interface AdminRecurringViewProps {
   onEditReservation?: (reservation: Reservation) => void;
 }
 
+interface RecurringSeriesCardProps {
+  series: RecurringSeriesGroup;
+  isExpanded: boolean;
+  todayStr: string;
+  onToggleExpand: (seriesId: string) => void;
+  onOpenModify: (series: RecurringSeriesGroup) => void;
+  onEditReservation?: (reservation: Reservation) => void;
+  onDeleteReservation?: (id: string, seriesId?: string) => Promise<void>;
+}
+
+const RecurringSeriesCard = React.memo<RecurringSeriesCardProps>(({
+  series,
+  isExpanded,
+  todayStr,
+  onToggleExpand,
+  onOpenModify,
+  onEditReservation,
+  onDeleteReservation
+}) => {
+  // Formatted days string
+  const daysLabel = series.diasSemana
+    .map((d) => WEEKDAYS.find((w) => w.dayNum === d)?.short || '')
+    .filter(Boolean)
+    .join(', ');
+
+  return (
+    <div
+      data-virtualized-item={series.seriesId}
+      className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden transition-all hover:border-slate-300"
+    >
+      <div className="p-4 sm:p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        {/* Left Column: Activity & Space Info */}
+        <div className="space-y-1.5 min-w-0 flex-1">
+          <div className="flex items-center flex-wrap gap-2">
+            <span className="text-sm sm:text-base font-black text-slate-900 truncate">
+              {series.tipoActividad}
+            </span>
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200 flex items-center space-x-1">
+              <Building2 className="w-3 h-3 text-slate-500" />
+              <span>{series.espacio}</span>
+            </span>
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200 flex items-center space-x-1">
+              <Clock className="w-3 h-3 text-blue-500" />
+              <span>{series.horaInicio} - {series.horaFin} hrs</span>
+            </span>
+          </div>
+
+          <div className="text-xs text-slate-600 flex items-center flex-wrap gap-x-4 gap-y-1">
+            <span><strong>Responsable:</strong> {series.responsable}</span>
+            {series.telefonoContacto && <span><strong>Tel:</strong> {series.telefonoContacto}</span>}
+            {series.emailContacto && <span><strong>Email:</strong> {series.emailContacto}</span>}
+          </div>
+
+          {/* Recurrence Summary & Crucial "Hasta qué fecha" */}
+          <div className="flex items-center flex-wrap gap-2 pt-1 text-xs">
+            <div className="flex items-center space-x-1 text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+              <CalendarDays className="w-3.5 h-3.5 text-blue-600" />
+              <span><strong>Días:</strong> {daysLabel || 'Días seleccionados'}</span>
+            </div>
+
+            <div className="flex items-center space-x-1 text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+              <span><strong>Desde:</strong> {formatDateDDMMYYYY(series.fechaInicio)}</span>
+            </div>
+
+            {/* PROMINENT REPEAT UNTIL DATE BADGE */}
+            <div className="flex items-center space-x-1.5 text-emerald-800 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-300 font-bold shadow-2xs">
+              <Repeat className="w-3.5 h-3.5 text-emerald-600 animate-spin-slow" />
+              <span>Se repite hasta: {formatDateDDMMYYYY(series.fechaFin)}</span>
+            </div>
+
+            <span className="text-[11px] text-slate-500 font-medium">
+              {formatSessionCounts(series.totalSesiones, series.sesionesFuturas, series.sesionesPasadas)}
+            </span>
+          </div>
+        </div>
+
+        {/* Right Column: Actions */}
+        <div className="flex items-center flex-wrap gap-2 shrink-0">
+          {/* Primary Action: Modificar hasta qué fecha se repite */}
+          <button
+            type="button"
+            id={`btn-modify-until-${series.seriesId}`}
+            onClick={() => onOpenModify(series)}
+            className="min-h-[40px] px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-1.5 cursor-pointer active:scale-95"
+            title="Extiende o recorta hasta qué fecha se repetirá esta actividad"
+          >
+            <Repeat className="w-3.5 h-3.5" />
+            <span>Modificar hasta qué fecha se repite</span>
+          </button>
+
+          {/* Toggle Sessions Detail */}
+          <button
+            type="button"
+            onClick={() => onToggleExpand(series.seriesId)}
+            className="min-h-[40px] px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
+            title="Ver todas las fechas programadas de la serie"
+          >
+            <span>{isExpanded ? 'Ocultar fechas' : `Ver fechas (${series.totalSesiones})`}</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Full Edit Modal */}
+          {onEditReservation && series.reservations[0] && (
+            <button
+              type="button"
+              onClick={() => onEditReservation(series.reservations[0])}
+              className="min-h-[40px] p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl border border-slate-200 transition cursor-pointer"
+              title="Abrir en formulario completo de reserva"
+            >
+              <Edit2 className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Delete Series */}
+          {onDeleteReservation && series.reservations[0] && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (confirm(`¿Estás seguro de eliminar la serie recurrente completa de "${series.tipoActividad}" (${series.totalSesiones} ${series.totalSesiones === 1 ? 'sesión' : 'sesiones'})? Esta acción cancelará todas las fechas programadas.`)) {
+                  await onDeleteReservation(series.reservations[0].id, series.seriesId);
+                }
+              }}
+              className="min-h-[40px] p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl border border-rose-200 transition cursor-pointer"
+              title="Eliminar todas las sesiones de la serie"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Collapsible Dates View */}
+      {isExpanded && (
+        <div className="px-5 py-4 bg-slate-50 border-t border-slate-200 space-y-3 animate-fadeIn">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-700">
+              Calendario de sesiones programadas ({series.totalSesiones}):
+            </span>
+            <span className="text-[11px] text-slate-500">
+              Inicia: {formatDateDDMMYYYY(series.fechaInicio)} • Finaliza: {formatDateDDMMYYYY(series.fechaFin)}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+            {series.reservations.map((r, idx) => {
+              const isPast = r.fecha < todayStr;
+              const isToday = r.fecha === todayStr;
+
+              return (
+                <div
+                  key={r.id}
+                  className={`p-2 rounded-xl border text-center transition ${
+                    isToday
+                      ? 'bg-amber-50 border-amber-300 text-amber-900 font-bold shadow-2xs'
+                      : isPast
+                      ? 'bg-slate-100 border-slate-200 text-slate-400'
+                      : 'bg-white border-slate-200 text-slate-800 font-medium hover:border-blue-400'
+                  }`}
+                >
+                  <span className="text-[10px] block uppercase font-bold text-slate-500">
+                    {(() => {
+                      try {
+                        return format(parseISO(r.fecha), 'EEE', { locale: es });
+                      } catch {
+                        return '';
+                      }
+                    })()}
+                  </span>
+                  <span className="text-xs font-bold block">{formatDateDDMMYYYY(r.fecha)}</span>
+                  <span className="text-[9.5px] block text-slate-500">
+                    #{idx + 1} {isToday ? '• Hoy' : isPast ? '• Pasada' : ''}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+RecurringSeriesCard.displayName = 'RecurringSeriesCard';
+
 export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
   reservations,
   spaces,
@@ -107,25 +290,21 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
     const seriesMap = new Map<string, Reservation[]>();
 
     reservations.forEach((r) => {
-      // Must be a series or marked as recurrent
-      const seriesKey = r.serieRecurrente || r.recurrenteId;
-      if (seriesKey) {
-        const list = seriesMap.get(seriesKey) || [];
-        list.push(r);
-        seriesMap.set(seriesKey, list);
-      } else if (r.actividadRecurrente === 'Sí') {
-        // Group by combo
-        const pseudoKey = `PSEUDO_${r.responsable}_${r.tipoActividad}_${r.espacio}_${r.horaInicio}_${r.horaFin}`;
-        const list = seriesMap.get(pseudoKey) || [];
-        list.push(r);
-        seriesMap.set(pseudoKey, list);
-      }
+      // Require a stable series identifier (serieRecurrente or recurrenteId)
+      // Excludes single/unlinked reservations without a seriesId
+      const seriesKey = (r.serieRecurrente || r.recurrenteId || '').trim();
+      if (!seriesKey) return;
+
+      const list = seriesMap.get(seriesKey) || [];
+      list.push(r);
+      seriesMap.set(seriesKey, list);
     });
 
     const result: RecurringSeriesGroup[] = [];
 
     seriesMap.forEach((items, key) => {
-      if (items.length < 1) return;
+      // Exclude single-session reservations: a true recurring series must have at least 2 sessions
+      if (items.length < 2) return;
       // Sort items by date ascending
       const sorted = [...items].sort((a, b) => a.fecha.localeCompare(b.fecha));
       const first = sorted[0];
@@ -196,7 +375,7 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
     startIndex,
     endIndex,
     totalItems
-  } = usePagination(filteredSeries, 50);
+  } = usePagination(filteredSeries, 10);
 
   // Reset page when filters change
   useEffect(() => {
@@ -651,171 +830,26 @@ export const AdminRecurringView: React.FC<AdminRecurringViewProps> = ({
         </div>
       ) : (
         <div className="space-y-3">
-          {paginatedItems.map((series) => {
-            const isExpanded = expandedSeriesId === series.seriesId;
-
-            // Formatted days string
-            const daysLabel = series.diasSemana
-              .map((d) => WEEKDAYS.find((w) => w.dayNum === d)?.short || '')
-              .filter(Boolean)
-              .join(', ');
-
-            return (
-              <div
+          <div
+            role="feed"
+            aria-label="Listado de actividades recurrentes"
+            aria-busy="false"
+            tabIndex={0}
+            className="space-y-3 focus:outline-none"
+          >
+            {paginatedItems.map((series) => (
+              <RecurringSeriesCard
                 key={series.seriesId}
-                className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden transition-all hover:border-slate-300"
-              >
-                <div className="p-4 sm:p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-                  {/* Left Column: Activity & Space Info */}
-                  <div className="space-y-1.5 min-w-0 flex-1">
-                    <div className="flex items-center flex-wrap gap-2">
-                      <span className="text-sm sm:text-base font-black text-slate-900 truncate">
-                        {series.tipoActividad}
-                      </span>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200 flex items-center space-x-1">
-                        <Building2 className="w-3 h-3 text-slate-500" />
-                        <span>{series.espacio}</span>
-                      </span>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200 flex items-center space-x-1">
-                        <Clock className="w-3 h-3 text-blue-500" />
-                        <span>{series.horaInicio} - {series.horaFin} hrs</span>
-                      </span>
-                    </div>
-
-                    <div className="text-xs text-slate-600 flex items-center flex-wrap gap-x-4 gap-y-1">
-                      <span><strong>Responsable:</strong> {series.responsable}</span>
-                      {series.telefonoContacto && <span><strong>Tel:</strong> {series.telefonoContacto}</span>}
-                      {series.emailContacto && <span><strong>Email:</strong> {series.emailContacto}</span>}
-                    </div>
-
-                    {/* Recurrence Summary & Crucial "Hasta qué fecha" */}
-                    <div className="flex items-center flex-wrap gap-2 pt-1 text-xs">
-                      <div className="flex items-center space-x-1 text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
-                        <CalendarDays className="w-3.5 h-3.5 text-blue-600" />
-                        <span><strong>Días:</strong> {daysLabel || 'Días seleccionados'}</span>
-                      </div>
-
-                      <div className="flex items-center space-x-1 text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
-                        <span><strong>Desde:</strong> {formatDateDDMMYYYY(series.fechaInicio)}</span>
-                      </div>
-
-                      {/* PROMINENT REPEAT UNTIL DATE BADGE */}
-                      <div className="flex items-center space-x-1.5 text-emerald-800 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-300 font-bold shadow-2xs">
-                        <Repeat className="w-3.5 h-3.5 text-emerald-600 animate-spin-slow" />
-                        <span>Se repite hasta: {formatDateDDMMYYYY(series.fechaFin)}</span>
-                      </div>
-
-                      <span className="text-[11px] text-slate-500 font-medium">
-                        {formatSessionCounts(series.totalSesiones, series.sesionesFuturas, series.sesionesPasadas)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Right Column: Actions */}
-                  <div className="flex items-center flex-wrap gap-2 shrink-0">
-                    {/* Primary Action: Modificar hasta qué fecha se repite */}
-                    <button
-                      type="button"
-                      id={`btn-modify-until-${series.seriesId}`}
-                      onClick={() => handleOpenModify(series)}
-                      className="min-h-[40px] px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-1.5 cursor-pointer active:scale-95"
-                      title="Extiende o recorta hasta qué fecha se repetirá esta actividad"
-                    >
-                      <Repeat className="w-3.5 h-3.5" />
-                      <span>Modificar hasta qué fecha se repite</span>
-                    </button>
-
-                    {/* Toggle Sessions Detail */}
-                    <button
-                      type="button"
-                      onClick={() => setExpandedSeriesId(isExpanded ? null : series.seriesId)}
-                      className="min-h-[40px] px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
-                      title="Ver todas las fechas programadas de la serie"
-                    >
-                      <span>{isExpanded ? 'Ocultar fechas' : `Ver fechas (${series.totalSesiones})`}</span>
-                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                    </button>
-
-                    {/* Full Edit Modal */}
-                    {onEditReservation && series.reservations[0] && (
-                      <button
-                        type="button"
-                        onClick={() => onEditReservation(series.reservations[0])}
-                        className="min-h-[40px] p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl border border-slate-200 transition cursor-pointer"
-                        title="Abrir en formulario completo de reserva"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    {/* Delete Series */}
-                    {onDeleteReservation && series.reservations[0] && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (confirm(`¿Estás seguro de eliminar la serie recurrente completa de "${series.tipoActividad}" (${series.totalSesiones} ${series.totalSesiones === 1 ? 'sesión' : 'sesiones'})? Esta acción cancelará todas las fechas programadas.`)) {
-                            await onDeleteReservation(series.reservations[0].id, series.seriesId);
-                          }
-                        }}
-                        className="min-h-[40px] p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl border border-rose-200 transition cursor-pointer"
-                        title="Eliminar todas las sesiones de la serie"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Collapsible Dates View */}
-                {isExpanded && (
-                  <div className="px-5 py-4 bg-slate-50 border-t border-slate-200 space-y-3 animate-fadeIn">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700">
-                        Calendario de sesiones programadas ({series.totalSesiones}):
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        Inicia: {formatDateDDMMYYYY(series.fechaInicio)} • Finaliza: {formatDateDDMMYYYY(series.fechaFin)}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-                      {series.reservations.map((r, idx) => {
-                        const isPast = r.fecha < todayStr;
-                        const isToday = r.fecha === todayStr;
-
-                        return (
-                          <div
-                            key={r.id}
-                            className={`p-2 rounded-xl border text-center transition ${
-                              isToday
-                                ? 'bg-amber-50 border-amber-300 text-amber-900 font-bold shadow-2xs'
-                                : isPast
-                                ? 'bg-slate-100 border-slate-200 text-slate-400'
-                                : 'bg-white border-slate-200 text-slate-800 font-medium hover:border-blue-400'
-                            }`}
-                          >
-                            <span className="text-[10px] block uppercase font-bold text-slate-500">
-                              {(() => {
-                                try {
-                                  return format(parseISO(r.fecha), 'EEE', { locale: es });
-                                } catch {
-                                  return '';
-                                }
-                              })()}
-                            </span>
-                            <span className="text-xs font-bold block">{formatDateDDMMYYYY(r.fecha)}</span>
-                            <span className="text-[9.5px] block text-slate-500">
-                              #{idx + 1} {isToday ? '• Hoy' : isPast ? '• Pasada' : ''}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                series={series}
+                isExpanded={expandedSeriesId === series.seriesId}
+                todayStr={todayStr}
+                onToggleExpand={(id) => setExpandedSeriesId((prev) => (prev === id ? null : id))}
+                onOpenModify={handleOpenModify}
+                onEditReservation={onEditReservation}
+                onDeleteReservation={onDeleteReservation}
+              />
+            ))}
+          </div>
 
           <PaginationControls
             currentPage={currentPage}

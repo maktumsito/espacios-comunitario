@@ -188,6 +188,9 @@ export const SpaceAvailabilityTimeline: React.FC<SpaceAvailabilityTimelineProps>
     };
   };
 
+  // Check if time range is fundamentally invalid (start >= end without overnight flag)
+  const isInvalidTimeRange = !terminaDiaSiguiente && selEndMin <= selStartMin;
+
   if (!space || !date) {
     return null;
   }
@@ -202,7 +205,7 @@ export const SpaceAvailabilityTimeline: React.FC<SpaceAvailabilityTimelineProps>
         <div className="flex items-center space-x-2 min-w-0">
           <div
             className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-              activeConflict
+              isInvalidTimeRange || activeConflict
                 ? 'bg-rose-500 ring-4 ring-rose-200 animate-pulse'
                 : 'bg-emerald-500 ring-4 ring-emerald-100'
             }`}
@@ -216,7 +219,12 @@ export const SpaceAvailabilityTimeline: React.FC<SpaceAvailabilityTimelineProps>
         </div>
 
         {/* Dynamic Status Badge */}
-        {activeConflict ? (
+        {isInvalidTimeRange ? (
+          <div className="flex items-center space-x-1 text-[11px] font-bold text-rose-700 bg-rose-100/80 px-2.5 py-0.5 rounded-full border border-rose-300">
+            <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+            <span>Horario no disponible: La hora de término ({currentEndTime}) debe ser posterior a la de inicio ({currentStartTime})</span>
+          </div>
+        ) : activeConflict ? (
           <div className={`flex items-center space-x-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
             activeConflict.isBlock
               ? 'text-amber-900 bg-amber-100 border-amber-300'
@@ -280,7 +288,7 @@ export const SpaceAvailabilityTimeline: React.FC<SpaceAvailabilityTimelineProps>
           })}
 
           {/* User Selected Interval Highlight (Blue overlay with border) */}
-          {selStartMin < OP_END_MIN && selEndMin > OP_START_MIN && (
+          {!isInvalidTimeRange && selStartMin < OP_END_MIN && selEndMin > OP_START_MIN && (
             <div
               style={getIntervalStyle(selStartMin, selEndMin)}
               className={`absolute top-0 bottom-0 pointer-events-none transition-all duration-150 ${

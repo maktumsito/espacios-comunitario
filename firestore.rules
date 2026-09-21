@@ -21,6 +21,7 @@ service cloud.firestore {
              data.fecha is string && data.fecha.size() <= 10 &&
              data.horaInicio is string && data.horaInicio.size() <= 5 &&
              data.horaFin is string && data.horaFin.size() <= 5 &&
+             (data.terminaDiaSiguiente == true || data.horaFin > data.horaInicio) &&
              data.espacio is string && data.espacio.size() <= 150 &&
              data.responsable is string && data.responsable.size() <= 200 &&
              data.tipoActividad is string && data.tipoActividad.size() <= 100 &&

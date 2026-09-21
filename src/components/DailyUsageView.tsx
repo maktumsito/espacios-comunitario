@@ -49,6 +49,7 @@ interface DailyUsageViewProps {
   onFilterChange?: (filters: FilterState) => void;
   onClearGlobalFilters?: () => void;
   spaces?: SpaceInfo[];
+  selectedDate?: Date;
   initialDate?: Date;
   onSelectReservation: (reserva: Reservation) => void;
   onEditReservation?: (reserva: Reservation) => void;
@@ -90,6 +91,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
   onFilterChange,
   onClearGlobalFilters,
   spaces = SPACES_LIST,
+  selectedDate: propSelectedDate,
   initialDate,
   onSelectReservation,
   onEditReservation,
@@ -102,21 +104,15 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
   onNavigateToMaintenance,
   onDateChange
 }) => {
-  // Default date: passed initialDate or current real date
-  const [selectedDate, setSelectedDate] = useState<Date>(() => initialDate || new Date());
+  // Single controlled source of truth: propSelectedDate || initialDate with local fallback
+  const [fallbackDate, setFallbackDate] = useState<Date>(() => propSelectedDate || initialDate || new Date());
+  const selectedDate = propSelectedDate || initialDate || fallbackDate;
   const [searchQuery, setSearchQuery] = useState<string>(() => globalFilters?.search || '');
   const [dateErrorMessage, setDateErrorMessage] = useState<string | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<{ space: string; hour: number } | null>(null);
 
-  // Sync when initialDate changes from calendar navigation
-  useEffect(() => {
-    if (initialDate) {
-      setSelectedDate(initialDate);
-    }
-  }, [initialDate]);
-
   const updateSelectedDate = useCallback((newDate: Date) => {
-    setSelectedDate(newDate);
+    setFallbackDate(newDate);
     onDateChange?.(newDate);
   }, [onDateChange]);
 

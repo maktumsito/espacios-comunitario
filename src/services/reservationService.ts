@@ -23,6 +23,7 @@ import {
   setIndexedDbReservations
 } from '../utils/indexedDbStorage';
 import { validateReservationWithZod } from '../schemas/reservationSchema';
+import { validateTimeRange } from '../utils/validationUtils';
 import { recordFirestoreRead } from '../utils/firestoreTracker';
 
 // ============================================================================
@@ -880,6 +881,12 @@ export async function fetchReservationsByDateRange(
 // ============================================================================
 
 export async function saveReservation(reserva: Reservation): Promise<void> {
+  // Strict time range validation (horaInicio < horaFin or terminaDiaSiguiente)
+  const timeCheck = validateTimeRange(reserva.horaInicio, reserva.horaFin, Boolean(reserva.terminaDiaSiguiente));
+  if (!timeCheck.isValid) {
+    throw new Error(`Validación de Horarios fallida: ${timeCheck.error || `La hora de término (${reserva.horaFin}) debe ser posterior a la de inicio (${reserva.horaInicio}).`}`);
+  }
+
   // Schema validation with Zod
   const validation = validateReservationWithZod(reserva);
   if (!validation.success) {
@@ -1011,6 +1018,14 @@ export async function saveReservation(reserva: Reservation): Promise<void> {
 
 export async function saveReservationsBatch(reservas: readonly Reservation[]): Promise<void> {
   if (!reservas.length) return;
+
+  // Strict time range validation (horaInicio < horaFin or terminaDiaSiguiente)
+  for (const r of reservas) {
+    const timeCheck = validateTimeRange(r.horaInicio, r.horaFin, Boolean(r.terminaDiaSiguiente));
+    if (!timeCheck.isValid) {
+      throw new Error(`Validación de Horarios fallida en reserva (${r.fecha} ${r.horaInicio} a ${r.horaFin}): ${timeCheck.error || 'La hora de término debe ser posterior a la de inicio.'}`);
+    }
+  }
 
   // Schema validation warnings for batch
   reservas.forEach((r) => {

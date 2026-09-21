@@ -3,6 +3,7 @@ import { FilterState, SpaceInfo, ActivityTypeItem } from '../types';
 import { SPACES_LIST, ACTIVITY_TYPES } from '../data/spacesData';
 import { Search, RotateCcw, Flame, AlertTriangle, X } from 'lucide-react';
 import { clampAndFixCalendarDate } from '../utils/validationUtils';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
 
 interface FilterBarProps {
   filters: FilterState;
@@ -30,6 +31,12 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   const effectiveActivityNames = availableActivityTypes
     ? availableActivityTypes.map(a => a.name)
     : ACTIVITY_TYPES;
+
+  const isDateRangeInvalid = Boolean(
+    filters.fechaDesde &&
+    filters.fechaHasta &&
+    filters.fechaDesde > filters.fechaHasta
+  );
 
   const isFiltered =
     Boolean(filters.search) ||
@@ -104,8 +111,12 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
             {/* Date Range Group */}
             <div className="flex flex-wrap items-center gap-1.5">
-              <div className="flex items-center px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
-                <span className="text-[11px] font-semibold text-slate-500 mr-1.5 whitespace-nowrap">Desde:</span>
+              <div className={`flex items-center px-2.5 py-1.5 rounded-xl text-xs transition border ${
+                isDateRangeInvalid
+                  ? 'border-rose-400 bg-rose-50/60 ring-1 ring-rose-400 text-rose-950'
+                  : 'bg-white border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent text-slate-700'
+              }`}>
+                <span className={`text-[11px] font-semibold mr-1.5 whitespace-nowrap ${isDateRangeInvalid ? 'text-rose-700' : 'text-slate-500'}`}>Desde:</span>
                 <input
                   id="filter-date-from"
                   type="date"
@@ -117,12 +128,16 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                     const { correctedIso } = clampAndFixCalendarDate(raw);
                     onFilterChange({ ...filters, fechaDesde: correctedIso || raw });
                   }}
-                  className="text-xs text-slate-700 bg-transparent focus:outline-none cursor-pointer"
+                  className="text-xs bg-transparent focus:outline-none cursor-pointer font-mono"
                 />
               </div>
 
-              <div className="flex items-center px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
-                <span className="text-[11px] font-semibold text-slate-500 mr-1.5 whitespace-nowrap">Hasta:</span>
+              <div className={`flex items-center px-2.5 py-1.5 rounded-xl text-xs transition border ${
+                isDateRangeInvalid
+                  ? 'border-rose-400 bg-rose-50/60 ring-1 ring-rose-400 text-rose-950'
+                  : 'bg-white border-slate-200 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent text-slate-700'
+              }`}>
+                <span className={`text-[11px] font-semibold mr-1.5 whitespace-nowrap ${isDateRangeInvalid ? 'text-rose-700' : 'text-slate-500'}`}>Hasta:</span>
                 <input
                   id="filter-date-to"
                   type="date"
@@ -134,7 +149,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                     const { correctedIso } = clampAndFixCalendarDate(raw);
                     onFilterChange({ ...filters, fechaHasta: correctedIso || raw });
                   }}
-                  className="text-xs text-slate-700 bg-transparent focus:outline-none cursor-pointer"
+                  className="text-xs bg-transparent focus:outline-none cursor-pointer font-mono"
                 />
               </div>
             </div>
@@ -155,6 +170,52 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             )}
           </div>
         </div>
+
+        {/* Invalid Date Range Error Banner */}
+        {isDateRangeInvalid && (
+          <div
+            id="filter-date-range-error"
+            role="alert"
+            className="w-full p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 font-semibold animate-fadeIn shadow-2xs"
+          >
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>
+                ⚠️ Rango de fechas no válido: La fecha "Desde" ({formatDateDDMMYYYY(filters.fechaDesde)}) no puede ser posterior a la fecha "Hasta" ({formatDateDDMMYYYY(filters.fechaHasta)}).
+              </span>
+            </div>
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                type="button"
+                id="btn-swap-filter-dates"
+                onClick={() => {
+                  onFilterChange({
+                    ...filters,
+                    fechaDesde: filters.fechaHasta,
+                    fechaHasta: filters.fechaDesde
+                  });
+                }}
+                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold rounded-lg transition cursor-pointer shadow-2xs"
+              >
+                Invertir fechas
+              </button>
+              <button
+                type="button"
+                id="btn-clear-filter-dates"
+                onClick={() => {
+                  onFilterChange({
+                    ...filters,
+                    fechaDesde: '',
+                    fechaHasta: ''
+                  });
+                }}
+                className="px-2.5 py-1 bg-white hover:bg-rose-100 text-rose-800 border border-rose-300 text-[11px] font-bold rounded-lg transition cursor-pointer"
+              >
+                Limpiar fechas
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Quick Toggle Chips & Reset */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">

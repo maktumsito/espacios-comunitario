@@ -2102,7 +2102,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
       return;
     }
 
-    if (!timeValidation.isValid && !isSpecific) {
+    if (!timeValidation.isValid) {
       abortWithFeedback(`⚠️ Error en horario: ${timeValidation.error || 'La hora de término debe ser posterior a la hora de inicio.'}`);
       return;
     }
