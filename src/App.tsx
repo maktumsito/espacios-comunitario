@@ -2222,7 +2222,7 @@ export default function App() {
           ratings={ratings}
           spaceBlocks={spaceBlocks}
           currentUser={currentUser}
-          initialDate={prefillDate}
+          initialDate={prefillDate || format(selectedDailyDate || new Date(), 'yyyy-MM-dd')}
           initialSpace={prefillSpace}
           initialStartTime={prefillStartTime}
           initialEndTime={prefillEndTime}

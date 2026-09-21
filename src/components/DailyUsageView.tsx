@@ -35,6 +35,8 @@ import { es } from 'date-fns/locale';
 import { validateStrictCalendarDate, clampAndFixCalendarDate } from '../utils/validationUtils';
 import { useReservationDateIndex } from '../utils/reservationIndex';
 import { formatActivitiesCount } from '../utils/pluralUtils';
+import { formatDateDDMMYYYY } from '../utils/dateUtils';
+import { normalizeDateToComparableIso } from '../utils/filterReservations';
 
 const PrintScheduleModal = React.lazy(() =>
   import('./PrintScheduleModal').then((m) => ({ default: m.PrintScheduleModal }))
@@ -122,8 +124,8 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
     }
   }, [initialDate, propSelectedDate]);
 
-  // The active date rendering the agenda is currentDate
-  const selectedDate = currentDate;
+  // The active date rendering the agenda is strictly derived from propSelectedDate if provided, or currentDate
+  const selectedDate = propSelectedDate !== undefined ? propSelectedDate : currentDate;
   const [searchQuery, setSearchQuery] = useState<string>(() => globalFilters?.search || '');
   const [dateErrorMessage, setDateErrorMessage] = useState<string | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<{ space: string; hour: number } | null>(null);
@@ -132,6 +134,26 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
     setCurrentDate(newDate);
     onDateChange?.(newDate);
   }, [onDateChange]);
+
+  const handleGotoDate = useCallback((rawVal: string) => {
+    if (!rawVal) return;
+    const { correctedIso, wasAdjusted, message } = clampAndFixCalendarDate(rawVal);
+    const targetVal = correctedIso || rawVal;
+    const validation = validateStrictCalendarDate(targetVal, 2020, 2035);
+    if (validation.isValid && validation.date) {
+      setDateErrorMessage(null);
+      updateSelectedDate(validation.date);
+      if (wasAdjusted && message) {
+        setToastMessage({
+          text: 'Fecha ajustada automáticamente',
+          sub: message
+        });
+      }
+    } else {
+      setDateErrorMessage(validation.error || 'Fecha no válida.');
+      setTimeout(() => setDateErrorMessage(null), 6000);
+    }
+  }, [updateSelectedDate]);
 
   // Drag & Drop State for Reservations
   const [draggedReservation, setDraggedReservation] = useState<Reservation | null>(null);
@@ -337,6 +359,15 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
     if (globalFilters?.soloConTopamiento) list.push(`Con Topamiento`);
     return list;
   }, [globalFilters, searchQuery]);
+
+  const hasDateRangeFilter = Boolean(globalFilters?.fechaDesde || globalFilters?.fechaHasta);
+
+  const isGlobalDateRangeInvalid = useMemo(() => {
+    if (!globalFilters?.fechaDesde || !globalFilters?.fechaHasta) return false;
+    const d = normalizeDateToComparableIso(globalFilters.fechaDesde, 'start');
+    const h = normalizeDateToComparableIso(globalFilters.fechaHasta, 'end');
+    return Boolean(d && h && d > h);
+  }, [globalFilters?.fechaDesde, globalFilters?.fechaHasta]);
 
   // Filter reservations for current day (operating only on day's reservations)
   const dayReservations = useMemo(() => {
@@ -859,27 +890,8 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
               min="2020-01-01"
               max="2035-12-31"
               value={dateStr}
-              onChange={(e) => {
-                const rawVal = e.target.value;
-                if (rawVal) {
-                  const { correctedIso, wasAdjusted, message } = clampAndFixCalendarDate(rawVal);
-                  const targetVal = correctedIso || rawVal;
-                  const validation = validateStrictCalendarDate(targetVal, 2020, 2035);
-                  if (validation.isValid && validation.date) {
-                    setDateErrorMessage(null);
-                    updateSelectedDate(validation.date);
-                    if (wasAdjusted && message) {
-                      setToastMessage({
-                        text: 'Fecha ajustada automáticamente',
-                        sub: message
-                      });
-                    }
-                  } else {
-                    setDateErrorMessage(validation.error || 'Fecha no válida.');
-                    setTimeout(() => setDateErrorMessage(null), 6000);
-                  }
-                }
-              }}
+              onChange={(e) => handleGotoDate(e.target.value)}
+              onInput={(e) => handleGotoDate((e.target as HTMLInputElement).value)}
               className="px-1 py-1 text-xs text-slate-700 font-mono font-medium focus:outline-none bg-transparent cursor-pointer min-h-[36px]"
             />
           </div>
@@ -959,8 +971,50 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
         </div>
       )}
 
+      {/* Error de rango de fechas no válido en filtros globales */}
+      {isGlobalDateRangeInvalid && (
+        <div
+          id="daily-date-range-error"
+          role="alert"
+          className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-900 flex items-center space-x-2.5 shadow-xs animate-fadeIn font-semibold"
+        >
+          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>⚠️ Rango de fechas no válido: La fecha "Desde" ({formatDateDDMMYYYY(globalFilters?.fechaDesde || '')}) no puede ser posterior a la fecha "Hasta" ({formatDateDDMMYYYY(globalFilters?.fechaHasta || '')}).</span>
+        </div>
+      )}
+
       {/* Differentiated Empty State Banner when no reservations match */}
-      {dayReservations.length === 0 && (
+      {hasDateRangeFilter && reservations.length === 0 ? (
+        <div
+          id="banner-no-results-date-range"
+          className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-950 animate-fadeIn"
+        >
+          <div className="flex items-center space-x-3 text-left">
+            <div className="w-9 h-9 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
+              <Search className="w-5 h-5 text-amber-800" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-amber-950">
+                Sin resultados para el rango seleccionado
+              </div>
+              <p className="text-xs text-amber-800 mt-0.5">
+                No existen reservas registradas en el rango de fechas seleccionado.
+              </p>
+            </div>
+          </div>
+          {onClearGlobalFilters && (
+            <button
+              type="button"
+              id="btn-recover-filtered-reservations"
+              onClick={onClearGlobalFilters}
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs transition shadow-xs flex items-center space-x-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Limpiar filtros</span>
+            </button>
+          )}
+        </div>
+      ) : dayReservations.length === 0 && (
         allReservationsForToday.length > 0 ? (
           <div
             id="banner-no-matches-filtered"
@@ -972,10 +1026,12 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
               </div>
               <div>
                 <div className="text-sm font-bold text-amber-950">
-                  Sin coincidencias con los filtros activos para este día
+                  {hasDateRangeFilter ? 'Sin resultados para el rango seleccionado' : 'Sin coincidencias con los filtros activos para este día'}
                 </div>
                 <p className="text-xs text-amber-800 mt-0.5">
-                  Hay <strong>{formatActivitiesCount(allReservationsForToday.length)} programadas</strong> en esta fecha ({format(selectedDate, 'dd-MM-yyyy')}) que están ocultas por el filtro actual ({activeFilterDescriptions.join(', ')}).
+                  {hasDateRangeFilter
+                    ? 'No se encontraron actividades en el rango de fechas seleccionado.'
+                    : <>Hay <strong>{formatActivitiesCount(allReservationsForToday.length)} programadas</strong> en esta fecha ({format(selectedDate, 'dd-MM-yyyy')}) que están ocultas por el filtro actual ({activeFilterDescriptions.join(', ')}).</>}
                 </p>
               </div>
             </div>
@@ -1000,7 +1056,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
               </div>
               <div>
                 <div className="text-sm font-bold text-slate-800">
-                  Sin reservas programadas para este día
+                  {hasDateRangeFilter ? 'Sin resultados para el rango seleccionado' : 'Sin reservas programadas para este día'}
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
                   No se registran actividades agendadas en ningún espacio para el {format(selectedDate, 'EEEE, dd-MM-yyyy', { locale: es })}.

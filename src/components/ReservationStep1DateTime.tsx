@@ -212,6 +212,16 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
   handleApplyBaseToAllDays,
   generatedDates
 }) => {
+  const isTimeReversedOrEqual = React.useMemo(() => {
+    if (!formData.horaInicio || !formData.horaFin) return false;
+    const sMin = timeStringToMinutes(formData.horaInicio);
+    const eMin = timeStringToMinutes(formData.horaFin);
+    if (sMin < 0 || eMin < 0) return false;
+    return eMin <= sMin;
+  }, [formData.horaInicio, formData.horaFin]);
+
+  const hasTimeError = !timeValidation.isValid || isTimeReversedOrEqual;
+
   if (isWizardMode && wizardStep !== 1) {
     return null;
   }
@@ -335,8 +345,8 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
             type="time"
             required
             value={formData.horaInicio ?? ''}
-            aria-invalid={!timeValidation.isValid}
-            aria-describedby={!timeValidation.isValid ? 'time-validation-error-message' : undefined}
+            aria-invalid={hasTimeError}
+            aria-describedby={hasTimeError ? 'time-validation-error-message' : undefined}
             onChange={(e) => {
               const newStart = e.target.value;
               setFormData(prev => ({
@@ -344,8 +354,15 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
                 horaInicio: newStart
               }));
             }}
+            onInput={(e) => {
+              const newStart = (e.target as HTMLInputElement).value;
+              setFormData(prev => ({
+                ...prev,
+                horaInicio: newStart
+              }));
+            }}
             className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 shadow-xs font-bold ${
-              !timeValidation.isValid
+              hasTimeError
                 ? 'border-rose-400 bg-rose-50/30 text-rose-950 focus:ring-rose-400'
                 : 'border-slate-200 focus:ring-blue-500'
             }`}
@@ -363,8 +380,8 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
             type="time"
             required
             value={formData.horaFin ?? ''}
-            aria-invalid={!timeValidation.isValid}
-            aria-describedby={!timeValidation.isValid ? 'time-validation-error-message' : undefined}
+            aria-invalid={hasTimeError}
+            aria-describedby={hasTimeError ? 'time-validation-error-message' : undefined}
             onChange={(e) => {
               const newEnd = e.target.value;
               setFormData(prev => ({
@@ -382,22 +399,39 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
                 }
               }
             }}
+            onInput={(e) => {
+              const newEnd = (e.target as HTMLInputElement).value;
+              setFormData(prev => ({
+                ...prev,
+                horaFin: newEnd
+              }));
+              if (enableSingleSecondSpace) {
+                setSingleSecondStartTime(newEnd);
+                try {
+                  const endMin = timeToMinutes(newEnd);
+                  const eNext = Math.min(1439, endMin + 30);
+                  setSingleSecondEndTime(formatMinutesToTime(eNext));
+                } catch {
+                  // ignore
+                }
+              }
+            }}
             className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 shadow-xs font-bold ${
-              !timeValidation.isValid
+              hasTimeError
                 ? 'border-rose-400 bg-rose-50/30 text-rose-950 focus:ring-rose-400'
                 : 'border-slate-200 focus:ring-blue-500'
             }`}
           />
         </div>
 
-        {!timeValidation.isValid && (
+        {hasTimeError && (
           <div
             id="time-validation-error-message"
             role="alert"
             className="sm:col-span-4 p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center space-x-2.5 shadow-2xs animate-fadeIn font-semibold"
           >
             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>⚠️ {timeValidation.error || 'La hora de término debe ser posterior a la de inicio.'}</span>
+            <span>La hora de término debe ser posterior a la hora de inicio</span>
           </div>
         )}
 

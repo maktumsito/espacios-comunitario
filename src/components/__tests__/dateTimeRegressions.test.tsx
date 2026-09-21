@@ -39,7 +39,7 @@ describe('Reservation time validation', () => {
     expect(end.value).toBe('13:00');
     expect(next.disabled).toBe(true);
     expect(document.getElementById('time-validation-error-message')?.textContent)
-      .toContain('La hora de término (13:00) debe ser posterior a la de inicio (14:00)');
+      .toContain('La hora de término debe ser posterior a la hora de inicio');
     expect(end.getAttribute('aria-invalid')).toBe('true');
     fireEvent.click(next);
     expect(screen.getByRole('button', { name: 'Siguiente: Solicitante' })).toBeTruthy();
@@ -47,7 +47,7 @@ describe('Reservation time validation', () => {
     expect(next.disabled).toBe(true);
     fireEvent.change(end, { target: { value: '15:00' } });
     expect(next.disabled).toBe(false);
-    expect(screen.queryByText(/La hora de término .* debe ser posterior/)).toBeNull();
+    expect(screen.queryByText(/La hora de término.*debe ser posterior/)).toBeNull();
     fireEvent.change(end, { target: { value: '' } });
     expect(end.value).toBe('');
     expect(next.disabled).toBe(true);

@@ -884,7 +884,7 @@ export async function saveReservation(reserva: Reservation): Promise<void> {
   // Strict time range validation (horaInicio < horaFin or terminaDiaSiguiente)
   const timeCheck = validateTimeRange(reserva.horaInicio, reserva.horaFin, Boolean(reserva.terminaDiaSiguiente));
   if (!timeCheck.isValid) {
-    throw new Error(`Validación de Horarios fallida: ${timeCheck.error || `La hora de término (${reserva.horaFin}) debe ser posterior a la de inicio (${reserva.horaInicio}).`}`);
+    throw new Error(`Validación de Horarios fallida: ${timeCheck.error || 'La hora de término debe ser posterior a la hora de inicio'}`);
   }
 
   // Schema validation with Zod
@@ -1023,7 +1023,7 @@ export async function saveReservationsBatch(reservas: readonly Reservation[]): P
   for (const r of reservas) {
     const timeCheck = validateTimeRange(r.horaInicio, r.horaFin, Boolean(r.terminaDiaSiguiente));
     if (!timeCheck.isValid) {
-      throw new Error(`Validación de Horarios fallida en reserva (${r.fecha} ${r.horaInicio} a ${r.horaFin}): ${timeCheck.error || 'La hora de término debe ser posterior a la de inicio.'}`);
+      throw new Error(`Validación de Horarios fallida en reserva (${r.fecha} ${r.horaInicio} a ${r.horaFin}): ${timeCheck.error || 'La hora de término debe ser posterior a la hora de inicio'}`);
     }
   }
 

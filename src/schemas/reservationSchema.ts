@@ -105,7 +105,7 @@ export const ReservationSchema = z
       return timeRes.isValid;
     },
     {
-      message: 'El rango horario no es válido: la hora de término debe ser posterior a la hora de inicio.',
+      message: 'La hora de término debe ser posterior a la hora de inicio',
       path: ['horaFin']
     }
   );
