@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { Reservation, UpdateScope } from '../types';
 import { isCommitmentLetterEligible } from '../utils/commitmentLetterPdf';
-import { timeStringToMinutes } from '../utils/validationUtils';
 
 interface ReservationModalFooterProps {
   editingReservation?: Reservation | null;
@@ -82,19 +81,6 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
   isStep1Completed,
   isStep2Completed
 }) => {
-  const isTimeInvalid = Boolean(
-    formData.horaInicio &&
-    formData.horaFin &&
-    !formData.terminaDiaSiguiente &&
-    (timeStringToMinutes(formData.horaFin) <= timeStringToMinutes(formData.horaInicio) || formData.horaFin <= formData.horaInicio)
-  );
-
-  const isSecondTimeInvalid = Boolean(
-    enableSingleSecondSpace && !singleSecondTimeValidation.isValid
-  );
-
-  const isAnyTimeInvalid = !timeValidation.isValid || isTimeInvalid || isSecondTimeInvalid;
-
   return (
     <div className="flex items-center justify-between pt-4 border-t border-slate-200">
       <div className="flex items-center space-x-2">
@@ -206,10 +192,10 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
           <button
             id="btn-wizard-next"
             type="button"
-            disabled={wizardStep === 1 ? (!isStep1Completed || isAnyTimeInvalid) : !isStep2Completed}
+            disabled={wizardStep === 1 ? (!isStep1Completed || !timeValidation.isValid) : !isStep2Completed}
             onClick={() => {
               if (wizardStep === 1) {
-                if (isAnyTimeInvalid) {
+                if (!timeValidation.isValid) {
                   validateStep1(true);
                   return;
                 }
@@ -225,7 +211,7 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
               }
             }}
             className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold shadow-xs transition flex items-center space-x-1.5 ${
-              (wizardStep === 1 ? (!isStep1Completed || isAnyTimeInvalid) : !isStep2Completed)
+              (wizardStep === 1 ? (!isStep1Completed || !timeValidation.isValid) : !isStep2Completed)
                 ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
                 : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
             }`}
@@ -238,9 +224,9 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
             id="btn-submit-reservation"
             type="submit"
             aria-label="Confirmar y guardar reserva de espacio"
-            disabled={isFormSubmitDisabled || isAnyTimeInvalid || (isEditingExisting && !canModifyReservation)}
+            disabled={isFormSubmitDisabled || (isEditingExisting && !canModifyReservation)}
             className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold shadow-xs transition ${
-              isFormSubmitDisabled || isAnyTimeInvalid || (isEditingExisting && !canModifyReservation)
+              isFormSubmitDisabled || (isEditingExisting && !canModifyReservation)
                 ? 'bg-slate-400 opacity-60 cursor-not-allowed shadow-none'
                 : (conflicts.length > 0 || candidateConflictDates.length > 0) && !allowConflictOverride
                 ? 'bg-rose-600 hover:bg-rose-700 cursor-pointer'
@@ -256,7 +242,7 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
               </span>
             ) : isEditingExisting && !canModifyReservation
               ? 'Edición Restringida (Solo Admin/Coord)'
-              : isAnyTimeInvalid
+              : !timeValidation.isValid
               ? 'Horario Inválido (Término ≤ Inicio)'
               : enableSingleSecondSpace && !singleSecondTimeValidation.isValid
               ? 'Horario 2° Espacio Inválido'

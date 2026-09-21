@@ -495,7 +495,7 @@ export function validateTimeRange(
       startMinutes,
       endMinutes,
       durationMinutes: endMinutes - startMinutes,
-      error: 'La hora de término debe ser posterior a la hora de inicio'
+      error: `La hora de término (${horaFin}) debe ser posterior a la de inicio (${horaInicio}).`
     };
   }
 

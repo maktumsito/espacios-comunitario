@@ -1147,13 +1147,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
   const isFormSubmitDisabled = useMemo(() => {
     if (isSubmitting) return true;
-    const isTimeInvalid = Boolean(
-      formData.horaInicio &&
-      formData.horaFin &&
-      !formData.terminaDiaSiguiente &&
-      (timeStringToMinutes(formData.horaFin) <= timeStringToMinutes(formData.horaInicio) || formData.horaFin <= formData.horaInicio)
-    );
-    if (!timeValidation.isValid || isTimeInvalid) return true;
+    if (!timeValidation.isValid) return true;
     if (!descriptionValidation.isValid) return true;
     if (enableSingleSecondSpace && !singleSecondTimeValidation.isValid) return true;
     if (!rutValidation.isValid) return true;
@@ -1763,13 +1757,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     if (!formData.espacio) return false;
     const targetDate = formData.fecha || editingReservation?.fecha;
     if (!targetDate) return false;
-    const isTimeInvalid = Boolean(
-      formData.horaInicio &&
-      formData.horaFin &&
-      !formData.terminaDiaSiguiente &&
-      (timeStringToMinutes(formData.horaFin) <= timeStringToMinutes(formData.horaInicio) || formData.horaFin <= formData.horaInicio)
-    );
-    if (!timeValidation.isValid || isTimeInvalid) return false;
+    if (!timeValidation.isValid) return false;
     if (enableSingleSecondSpace && !singleSecondTimeValidation.isValid) return false;
     if (hasStep1Conflict) return false;
     if (loanScheduleCheck.requiresAuthorization && !isExtensionAuthorized) return false;
@@ -1838,14 +1826,8 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
   }, [formData.descripcion, descriptionValidation.isValid]);
 
   const validateStep1 = (showAlert = true): boolean => {
-    const isTimeInvalid = Boolean(
-      formData.horaInicio &&
-      formData.horaFin &&
-      !formData.terminaDiaSiguiente &&
-      (timeStringToMinutes(formData.horaFin) <= timeStringToMinutes(formData.horaInicio) || formData.horaFin <= formData.horaInicio)
-    );
-    if (!timeValidation.isValid || isTimeInvalid) {
-      if (showAlert) showFormFeedback(`⚠️ ${timeValidation.error || 'La hora de término debe ser posterior a la hora de inicio'}`, 'warning');
+    if (!timeValidation.isValid) {
+      if (showAlert) showFormFeedback(`⚠️ ${timeValidation.error || 'La hora de término debe ser posterior a la hora de inicio.'}`, 'warning');
       return false;
     }
     if (enableSingleSecondSpace && !singleSecondTimeValidation.isValid) {
@@ -2120,14 +2102,8 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
       return;
     }
 
-    const isTimeInvalid = Boolean(
-      formData.horaInicio &&
-      formData.horaFin &&
-      !formData.terminaDiaSiguiente &&
-      (timeStringToMinutes(formData.horaFin) <= timeStringToMinutes(formData.horaInicio) || formData.horaFin <= formData.horaInicio)
-    );
-    if (!timeValidation.isValid || isTimeInvalid) {
-      abortWithFeedback(`⚠️ Error en horario: ${timeValidation.error || 'La hora de término debe ser posterior a la hora de inicio'}`);
+    if (!timeValidation.isValid) {
+      abortWithFeedback(`⚠️ Error en horario: ${timeValidation.error || 'La hora de término debe ser posterior a la hora de inicio.'}`);
       return;
     }
 

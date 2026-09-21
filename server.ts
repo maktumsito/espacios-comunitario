@@ -34,26 +34,6 @@ dotenv.config();
 const PORT = 3000;
 const TIMEZONE = 'America/Santiago';
 
-/**
- * Strict reservation time validation replicated on server/backend layer
- */
-export function validateReservationTimeStrict(horaInicio: string, horaFin: string, terminaDiaSiguiente?: boolean): { isValid: boolean; error?: string } {
-  if (!horaInicio || !horaFin) {
-    return { isValid: false, error: 'Horario incompleto.' };
-  }
-  const [sh, sm] = horaInicio.split(':').map(Number);
-  const [eh, em] = horaFin.split(':').map(Number);
-  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) {
-    return { isValid: false, error: 'Formato de hora inválido.' };
-  }
-  const sMin = sh * 60 + sm;
-  const eMin = eh * 60 + em;
-  if (!terminaDiaSiguiente && eMin <= sMin) {
-    return { isValid: false, error: 'La hora de término debe ser posterior a la hora de inicio' };
-  }
-  return { isValid: true };
-}
-
 // Read Firebase config from repository
 let firebaseConfig: any = null;
 try {

@@ -4,7 +4,6 @@ import { SPACES_LIST, ACTIVITY_TYPES } from '../data/spacesData';
 import { Search, RotateCcw, Flame, AlertTriangle, X } from 'lucide-react';
 import { clampAndFixCalendarDate } from '../utils/validationUtils';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
-import { normalizeDateToComparableIso } from '../utils/filterReservations';
 
 interface FilterBarProps {
   filters: FilterState;
@@ -33,13 +32,10 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     ? availableActivityTypes.map(a => a.name)
     : ACTIVITY_TYPES;
 
-  const desdeIso = normalizeDateToComparableIso(filters.fechaDesde, 'start');
-  const hastaIso = normalizeDateToComparableIso(filters.fechaHasta, 'end');
-
   const isDateRangeInvalid = Boolean(
-    desdeIso &&
-    hastaIso &&
-    desdeIso > hastaIso
+    filters.fechaDesde &&
+    filters.fechaHasta &&
+    filters.fechaDesde > filters.fechaHasta
   );
 
   const isFiltered =
@@ -126,18 +122,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                   type="date"
                   aria-label="Filtrar desde fecha"
                   title="Fecha Desde"
-                  value={desdeIso || filters.fechaDesde || ''}
+                  value={filters.fechaDesde}
                   onChange={(e) => {
                     const raw = e.target.value;
                     const { correctedIso } = clampAndFixCalendarDate(raw);
-                    const normalized = normalizeDateToComparableIso(correctedIso || raw, 'start') || correctedIso || raw;
-                    onFilterChange({ ...filters, fechaDesde: normalized });
-                  }}
-                  onInput={(e) => {
-                    const raw = (e.target as HTMLInputElement).value;
-                    const { correctedIso } = clampAndFixCalendarDate(raw);
-                    const normalized = normalizeDateToComparableIso(correctedIso || raw, 'start') || correctedIso || raw;
-                    onFilterChange({ ...filters, fechaDesde: normalized });
+                    onFilterChange({ ...filters, fechaDesde: correctedIso || raw });
                   }}
                   className="text-xs bg-transparent focus:outline-none cursor-pointer font-mono"
                 />
@@ -154,18 +143,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                   type="date"
                   aria-label="Filtrar hasta fecha"
                   title="Fecha Hasta"
-                  value={hastaIso || filters.fechaHasta || ''}
+                  value={filters.fechaHasta}
                   onChange={(e) => {
                     const raw = e.target.value;
                     const { correctedIso } = clampAndFixCalendarDate(raw);
-                    const normalized = normalizeDateToComparableIso(correctedIso || raw, 'end') || correctedIso || raw;
-                    onFilterChange({ ...filters, fechaHasta: normalized });
-                  }}
-                  onInput={(e) => {
-                    const raw = (e.target as HTMLInputElement).value;
-                    const { correctedIso } = clampAndFixCalendarDate(raw);
-                    const normalized = normalizeDateToComparableIso(correctedIso || raw, 'end') || correctedIso || raw;
-                    onFilterChange({ ...filters, fechaHasta: normalized });
+                    onFilterChange({ ...filters, fechaHasta: correctedIso || raw });
                   }}
                   className="text-xs bg-transparent focus:outline-none cursor-pointer font-mono"
                 />
@@ -232,28 +214,6 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 Limpiar fechas
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Empty State Banner when filtered list is empty for date range */}
-        {totalFiltered === 0 && (Boolean(filters.fechaDesde) || Boolean(filters.fechaHasta)) && !isDateRangeInvalid && (
-          <div
-            id="filter-empty-date-range-banner"
-            role="status"
-            className="w-full p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 font-semibold animate-fadeIn shadow-2xs"
-          >
-            <div className="flex items-center space-x-2">
-              <span className="text-base">📅</span>
-              <span>Sin resultados para el rango seleccionado</span>
-            </div>
-            <button
-              type="button"
-              id="btn-clear-date-filter"
-              onClick={() => onFilterChange({ ...filters, fechaDesde: '', fechaHasta: '' })}
-              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-lg transition cursor-pointer shadow-2xs shrink-0"
-            >
-              Limpiar rango
-            </button>
           </div>
         )}
 
