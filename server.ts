@@ -450,7 +450,7 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
     // 7. Generate ONE printable PDF sheet for EACH day to be dispatched
     const attachments: EmailAttachmentServer[] = [];
     for (const dateStr of activityDates) {
-      const doc = generateDailySchedulePdf({
+      const doc = await generateDailySchedulePdf({
         dateStr,
         reservations: activeReservations,
         onlyOccupiedSpaces: true,

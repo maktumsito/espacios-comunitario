@@ -1,3 +1,4 @@
+import { showPrintBlob } from '../utils/printWindow';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Reservation, SpaceInfo } from '../types';
 import { SPACES_LIST, normalizeSpaceName } from '../data/spacesData';
@@ -25,8 +26,7 @@ import {
   endOfDay
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { loadPdfLibraries } from '../utils/loadPdfLibraries';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import { getChileanHolidayInfo } from '../utils/holidayUtils';
 
@@ -401,7 +401,8 @@ export const PrintScheduleModal: React.FC<PrintScheduleModalProps> = ({
   };
 
   // Helper to build jsPDF Document
-  const buildPdfDocument = () => {
+  const buildPdfDocument = async () => {
+    const { jsPDF, autoTable } = await loadPdfLibraries();
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -607,11 +608,12 @@ export const PrintScheduleModal: React.FC<PrintScheduleModalProps> = ({
 
   // 1. Direct Native Vector PDF Generator
   const handleDownloadPdf = async () => {
+    if (isGeneratingPdf) return;
     setIsGeneratingPdf(true);
     setFeedbackMessage('Generando PDF oficial vectorizado...');
 
     try {
-      const doc = buildPdfDocument();
+      const doc = await buildPdfDocument();
       doc.save(`Planilla_Diaria_Diaguitas_${formatDateDDMMYYYY(targetDate)}.pdf`);
       setFeedbackMessage('¡PDF descargado con éxito!');
       setTimeout(() => setFeedbackMessage(null), 3500);
@@ -624,57 +626,36 @@ export const PrintScheduleModal: React.FC<PrintScheduleModalProps> = ({
     }
   };
 
-  // 2. Direct Print: Triggers Auto-Print via PDF Blob or Printable Window
-  const handlePrintDirect = () => {
+  // Reserve the popup during the user gesture, before asynchronous library loading.
+  const handlePrintDirect = async () => {
+    if (isPrinting) return;
     setIsPrinting(true);
     setFeedbackMessage('Abriendo diálogo de impresión...');
-
+    let printWin: Window | null = null;
     try {
-      // Strategy A: PDF AutoPrint (native browser print dialog for the generated PDF)
-      const doc = buildPdfDocument();
-      doc.autoPrint();
-      const pdfBlob = doc.output('blob');
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-
-      // Open printable PDF in popup window
-      const printWin = window.open(pdfUrl, '_blank');
-      if (printWin) {
-        printWin.focus();
-        setTimeout(() => {
-          setIsPrinting(false);
-          setFeedbackMessage(null);
-        }, 2000);
-        return;
-      }
-
-      // Strategy B: If popups blocked, try clean HTML popup with auto-print
-      const htmlContent = buildStandaloneHtml();
-      const htmlBlob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-      const htmlUrl = URL.createObjectURL(htmlBlob);
-      const htmlWin = window.open(htmlUrl, '_blank');
-
-      if (htmlWin) {
-        htmlWin.focus();
-        setTimeout(() => {
-          htmlWin.print();
-          setIsPrinting(false);
-          setFeedbackMessage(null);
-        }, 500);
-        return;
-      }
-
-      // Strategy C: In-page print fallback
-      window.print();
-      setIsPrinting(false);
-      setFeedbackMessage(null);
-    } catch (err) {
-      console.error('Error in handlePrintDirect:', err);
-      // Fallback
-      try {
+      printWin = window.open('about:blank', '_blank');
+      if (!printWin) {
         window.print();
-      } catch (e) {
-        console.error('window.print failed:', e);
+        return;
       }
+      try {
+        const doc = await buildPdfDocument();
+        if (printWin.closed) return;
+        doc.autoPrint();
+        showPrintBlob(printWin, doc.output('blob'));
+      } catch (error) {
+        console.error('Error generating printable PDF:', error);
+        if (printWin.closed) return;
+        // Reuse the reserved window for the complete HTML document on PDF failure.
+        const html = buildStandaloneHtml().replace('</body>', '<script>window.addEventListener("load", () => window.print(), { once: true });</script></body>');
+        showPrintBlob(printWin, new Blob([html], { type: 'text/html;charset=utf-8' }));
+      }
+      setFeedbackMessage('Planilla abierta para imprimir.');
+    } catch (error) {
+      printWin?.close();
+      console.error('Error opening print window:', error);
+      setFeedbackMessage('No se pudo abrir la impresión. Intente nuevamente.');
+    } finally {
       setIsPrinting(false);
     }
   };
@@ -684,12 +665,12 @@ export const PrintScheduleModal: React.FC<PrintScheduleModalProps> = ({
     try {
       const htmlContent = buildStandaloneHtml();
       const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-      const blobUrl = URL.createObjectURL(blob);
-      const newWin = window.open(blobUrl, '_blank');
+      const newWin = window.open('about:blank', '_blank');
       if (!newWin) {
         setFeedbackMessage('Por favor permite ventanas emergentes (popups) para abrir la planilla en una nueva pestaña.');
         setTimeout(() => setFeedbackMessage(null), 5000);
       } else {
+        showPrintBlob(newWin, blob);
         setFeedbackMessage('Planilla abierta en una nueva pestaña.');
         setTimeout(() => setFeedbackMessage(null), 3000);
       }

@@ -914,9 +914,9 @@ export function useReservationSaveHandler({
       isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) &&
       descargarCartaAlCrear
     ) {
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
-          downloadCommitmentLetterPdf(finalReserva, {
+          await downloadCommitmentLetterPdf(finalReserva, {
             allReservations,
             seriesScheduleItems: effectiveSeriesSlotsForLetter
           });

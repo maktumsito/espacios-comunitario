@@ -1,5 +1,5 @@
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import type { jsPDF } from 'jspdf';
+import { loadPdfLibraries } from './loadPdfLibraries';
 import { format, parseISO, addDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Reservation, SpaceInfo } from '../types';
@@ -99,7 +99,8 @@ export function docToBase64(doc: jsPDF): string {
  * Generates the official printable daily activities schedule PDF for a specific day.
  * Formatted specifically for clear paper printing (A4 portrait, high contrast, clean tables).
  */
-export function generateDailySchedulePdf(options: DailySchedulePdfOptions): jsPDF {
+export async function generateDailySchedulePdf(options: DailySchedulePdfOptions): Promise<jsPDF> {
+  const { jsPDF, autoTable } = await loadPdfLibraries();
   const {
     dateStr,
     reservations,
@@ -444,8 +445,8 @@ export function generateDailySchedulePdf(options: DailySchedulePdfOptions): jsPD
 /**
  * Generates the pure base64 string for a daily schedule PDF
  */
-export function generateDailySchedulePdfBase64(options: DailySchedulePdfOptions): string {
-  const doc = generateDailySchedulePdf(options);
+export async function generateDailySchedulePdfBase64(options: DailySchedulePdfOptions): Promise<string> {
+  const doc = await generateDailySchedulePdf(options);
   return docToBase64(doc);
 }
 
@@ -458,14 +459,15 @@ export function generateDailySchedulePdfBase64(options: DailySchedulePdfOptions)
  * - base64 (ready for email attachments)
  * - activitiesCount (number of activities on that date)
  */
-export function generateDailyPdfsForDates(
+export async function generateDailyPdfsForDates(
   dates: string[],
   reservations: Reservation[],
   options?: Omit<DailySchedulePdfOptions, 'dateStr' | 'reservations'>
-): GeneratedDailyPdfItem[] {
-  return dates.map((dateStr) => {
+): Promise<GeneratedDailyPdfItem[]> {
+  const items: GeneratedDailyPdfItem[] = [];
+  for (const dateStr of dates) {
     const dailyBookings = reservations.filter((r) => r.fecha === dateStr);
-    const doc = generateDailySchedulePdf({
+    const doc = await generateDailySchedulePdf({
       dateStr,
       reservations,
       ...options
@@ -473,12 +475,13 @@ export function generateDailyPdfsForDates(
     const filename = getDailySchedulePdfFilename(dateStr);
     const base64 = docToBase64(doc);
 
-    return {
+    items.push({
       date: dateStr,
       filename,
       doc,
       base64,
       activitiesCount: dailyBookings.length
-    };
-  });
+    });
+  }
+  return items;
 }

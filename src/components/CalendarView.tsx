@@ -1,3 +1,4 @@
+import { VirtualCardGrid } from './common/VirtualCardGrid';
 import React, { useState, useMemo, useCallback, memo, useEffect } from 'react';
 import { Reservation, SpaceInfo, isSingleDayMultiSpaceReservation, SpaceBlock } from '../types';
 import { SPACES_LIST } from '../data/spacesData';
@@ -606,16 +607,17 @@ const SelectedDayAgenda = memo<SelectedDayAgendaProps>(({
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-60 overflow-y-auto pr-1">
-            {selectedDayReservations.map((res) => (
+          <VirtualCardGrid
+            key={selectedDayStr}
+            items={selectedDayReservations}
+            renderItem={res => (
               <AgendaReservationCard
-                key={res.id}
                 reservation={res}
                 spaceColor={getSpaceColor(res.espacio)}
                 onSelectReservation={onSelectReservation}
               />
-            ))}
-          </div>
+            )}
+          />
         )
       )}
     </div>

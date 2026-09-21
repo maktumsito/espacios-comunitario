@@ -51,9 +51,10 @@ export const CommitmentLetterCard: React.FC<CommitmentLetterCardProps> = ({
 
   // Handle instant download of official blank/prefilled PDF
   const handleDownloadOfficialPdf = async () => {
+    if (isDownloading) return;
     try {
       setIsDownloading(true);
-      downloadCommitmentLetterPdf(reservation, {
+      await downloadCommitmentLetterPdf(reservation, {
         allReservations,
         seriesScheduleItems
       });

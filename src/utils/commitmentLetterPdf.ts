@@ -1,5 +1,5 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import type { jsPDF } from 'jspdf';
+import { loadPdfLibraries } from './loadPdfLibraries';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Reservation } from '../types';
@@ -329,10 +329,11 @@ export function computeCommitmentPoint2Details(
   };
 }
 
-export function generateCommitmentLetterPdfDoc(
+export async function generateCommitmentLetterPdfDoc(
   reservation: Partial<Reservation>,
   options?: CommitmentLetterOptions
-): jsPDF {
+): Promise<jsPDF> {
+  const { jsPDF, autoTable } = await loadPdfLibraries();
   // 8.5 x 13 inches = 215.9 mm x 330.2 mm (Tamaño Oficio / Folio tradicional chileno)
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -705,12 +706,12 @@ export function generateCommitmentLetterPdfDoc(
   return doc;
 }
 
-export function downloadCommitmentLetterPdf(
+export async function downloadCommitmentLetterPdf(
   reservation: Partial<Reservation>,
   options?: CommitmentLetterOptions
-): void {
+): Promise<void> {
   try {
-    const doc = generateCommitmentLetterPdfDoc(reservation, options);
+    const doc = await generateCommitmentLetterPdfDoc(reservation, options);
     const filename = `Carta_Compromiso_${(reservation.espacio || 'Espacio').replace(/\s+/g, '_')}_${reservation.fecha || 'Fecha'}.pdf`;
     doc.save(filename);
   } catch (err) {

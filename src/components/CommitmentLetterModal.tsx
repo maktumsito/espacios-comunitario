@@ -159,11 +159,12 @@ export const CommitmentLetterModal: React.FC<CommitmentLetterModalProps> = ({
   };
 
   // Generate and Download PDF using jsPDF matching the user's letter
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
+    if (isGeneratingPdf) return;
     try {
       setPdfError(null);
       setIsGeneratingPdf(true);
-      downloadCommitmentLetterPdf(
+      await downloadCommitmentLetterPdf(
         { ...reservationData, ...localData },
         { seriesScheduleItems: scheduleSlots, allReservations }
       );

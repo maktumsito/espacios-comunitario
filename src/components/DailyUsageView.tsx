@@ -1,3 +1,4 @@
+import { useTimelineViewport, intersectsViewport } from '../hooks/useTimelineViewport';
 import React, { useState, useMemo, useEffect, useRef, Suspense, useCallback } from 'react';
 import { Reservation, SpaceInfo, FilterState, SpaceBlock } from '../types';
 import { SPACES_LIST, normalizeSpaceName } from '../data/spacesData';
@@ -706,7 +707,102 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
   const handleNextDay = () => updateSelectedDate(addDays(selectedDate, 1));
   const handleToday = () => updateSelectedDate(new Date());
 
+  // Compute overlap lanes once per data change, never once per scroll frame.
+  const bookingsBySpace = useMemo(() => new Map(activeSpaces.map(space => {
+    const getBookingInterval = (r: Reservation) => {
+      const isOvernight = Boolean(r.terminaDiaSiguiente) || (timeToMinutes(r.horaFin) <= timeToMinutes(r.horaInicio) && timeToMinutes(r.horaFin) > 0);
+      const isSecondDay = isOvernight && r.fecha !== dateStr;
+      const s = isSecondDay ? 0 : timeToMinutes(r.horaInicio);
+      const e = (isOvernight && !isSecondDay) ? (24 * 60) : timeToMinutes(r.horaFin);
+      return { s, e, isOvernight, isSecondDay };
+    };
+
+    const spaceBookings = dayReservations
+      .filter((r) => normalizeSpaceName(r.espacio) === normalizeSpaceName(space.name))
+      .sort((a, b) => {
+        const intA = getBookingInterval(a);
+        const intB = getBookingInterval(b);
+        const startDiff = intA.s - intB.s;
+        if (startDiff !== 0) return startDiff;
+        return intB.e - intA.e;
+      });
+
+    // Calculate non-overlapping sub-column layout for concurrent bookings
+    const layoutMap = new Map<string, { colIndex: number; totalCols: number }>();
+    if (spaceBookings.length > 0) {
+      const clusters: Reservation[][] = [];
+      let currentCluster: Reservation[] = [];
+      let clusterEnd = -1;
+
+      spaceBookings.forEach((b) => {
+        const bInt = getBookingInterval(b);
+        if (currentCluster.length === 0) {
+          currentCluster.push(b);
+          clusterEnd = bInt.e;
+        } else if (bInt.s < clusterEnd) {
+          currentCluster.push(b);
+          clusterEnd = Math.max(clusterEnd, bInt.e);
+        } else {
+          clusters.push(currentCluster);
+          currentCluster = [b];
+          clusterEnd = bInt.e;
+        }
+      });
+      if (currentCluster.length > 0) {
+        clusters.push(currentCluster);
+      }
+
+      clusters.forEach((cluster) => {
+        if (cluster.length === 1) {
+          layoutMap.set(cluster[0].id, { colIndex: 0, totalCols: 1 });
+          return;
+        }
+        const cols: Reservation[][] = [];
+        cluster.forEach((b) => {
+          const bInt = getBookingInterval(b);
+          let placed = false;
+          for (let c = 0; c < cols.length; c++) {
+            const lastInCol = cols[c][cols[c].length - 1];
+            const lastInt = getBookingInterval(lastInCol);
+            if (lastInt.e <= bInt.s) {
+              cols[c].push(b);
+              layoutMap.set(b.id, { colIndex: c, totalCols: 0 });
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) {
+            cols.push([b]);
+            layoutMap.set(b.id, { colIndex: cols.length - 1, totalCols: 0 });
+          }
+        });
+        const totalColumnsInCluster = cols.length;
+        cluster.forEach((b) => {
+          const entry = layoutMap.get(b.id);
+          if (entry) {
+            entry.totalCols = totalColumnsInCluster;
+          }
+        });
+      });
+    }
+
+
+    const geometry = new Map(spaceBookings.map(res => {
+      const { s, e } = getBookingInterval(res);
+      const from = Math.max(s, START_MINUTES);
+      const to = Math.min(e, START_MINUTES + TOTAL_MINUTES);
+      return [res.id, { top: ((from - START_MINUTES) / 60) * HOUR_HEIGHT + 2,
+        height: Math.max(38, ((to - from) / 60) * HOUR_HEIGHT) - 4, valid: to > from }];
+    }));
+    return [space.id, { spaceBookings, layoutMap, getBookingInterval, geometry }] as const;
+  })), [activeSpaces, dayReservations, dateStr, START_MINUTES, TOTAL_MINUTES]);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const headerRef = useRef<HTMLDivElement>(null);
+  const viewport = useTimelineViewport(scrollContainerRef, headerRef, TOTAL_HOURS, HOUR_HEIGHT);
+  const [focusedReservationId, setFocusedReservationId] = useState<string | null>(null);
+  const pendingFocus = useRef<string | null>(null);
 
   // Auto scroll horizontally or vertically on mount if needed
   useEffect(() => {
@@ -1071,11 +1167,11 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
       <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-140px)] min-h-[640px] scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100"
+          className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-140px)] min-h-0 h-[calc(100dvh-140px)] scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100"
         >
           <div className="min-w-[1320px] relative">
             {/* STICKY HEADER ROW: "HORA" + All Space Columns */}
-            <div className="sticky top-0 z-30 flex border-b border-slate-200 bg-[#f8fafc] text-xs font-bold text-slate-700 shadow-2xs">
+            <div ref={headerRef} className="sticky top-0 z-30 flex border-b border-slate-200 bg-[#f8fafc] text-xs font-bold text-slate-700 shadow-2xs">
               {/* Left "HORA" header */}
               <div className="w-[72px] shrink-0 p-3 text-center text-[11px] uppercase tracking-wider font-extrabold text-slate-500 border-r border-slate-200 bg-[#f1f5f9] flex items-center justify-center select-none">
                 HORA
@@ -1187,83 +1283,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
 
                 {/* Space Columns Container (Droppable Zones) */}
                 {activeSpaces.map((space) => {
-                  const getBookingInterval = (r: Reservation) => {
-                    const isOvernight = Boolean(r.terminaDiaSiguiente) || (timeToMinutes(r.horaFin) <= timeToMinutes(r.horaInicio) && timeToMinutes(r.horaFin) > 0);
-                    const isSecondDay = isOvernight && r.fecha !== dateStr;
-                    const s = isSecondDay ? 0 : timeToMinutes(r.horaInicio);
-                    const e = (isOvernight && !isSecondDay) ? (24 * 60) : timeToMinutes(r.horaFin);
-                    return { s, e, isOvernight, isSecondDay };
-                  };
-
-                  const spaceBookings = dayReservations
-                    .filter((r) => normalizeSpaceName(r.espacio) === normalizeSpaceName(space.name))
-                    .sort((a, b) => {
-                      const intA = getBookingInterval(a);
-                      const intB = getBookingInterval(b);
-                      const startDiff = intA.s - intB.s;
-                      if (startDiff !== 0) return startDiff;
-                      return intB.e - intA.e;
-                    });
-
-                  // Calculate non-overlapping sub-column layout for concurrent bookings
-                  const layoutMap = new Map<string, { colIndex: number; totalCols: number }>();
-                  if (spaceBookings.length > 0) {
-                    const clusters: Reservation[][] = [];
-                    let currentCluster: Reservation[] = [];
-                    let clusterEnd = -1;
-
-                    spaceBookings.forEach((b) => {
-                      const bInt = getBookingInterval(b);
-                      if (currentCluster.length === 0) {
-                        currentCluster.push(b);
-                        clusterEnd = bInt.e;
-                      } else if (bInt.s < clusterEnd) {
-                        currentCluster.push(b);
-                        clusterEnd = Math.max(clusterEnd, bInt.e);
-                      } else {
-                        clusters.push(currentCluster);
-                        currentCluster = [b];
-                        clusterEnd = bInt.e;
-                      }
-                    });
-                    if (currentCluster.length > 0) {
-                      clusters.push(currentCluster);
-                    }
-
-                    clusters.forEach((cluster) => {
-                      if (cluster.length === 1) {
-                        layoutMap.set(cluster[0].id, { colIndex: 0, totalCols: 1 });
-                        return;
-                      }
-                      const cols: Reservation[][] = [];
-                      cluster.forEach((b) => {
-                        const bInt = getBookingInterval(b);
-                        let placed = false;
-                        for (let c = 0; c < cols.length; c++) {
-                          const lastInCol = cols[c][cols[c].length - 1];
-                          const lastInt = getBookingInterval(lastInCol);
-                          if (lastInt.e <= bInt.s) {
-                            cols[c].push(b);
-                            layoutMap.set(b.id, { colIndex: c, totalCols: 0 });
-                            placed = true;
-                            break;
-                          }
-                        }
-                        if (!placed) {
-                          cols.push([b]);
-                          layoutMap.set(b.id, { colIndex: cols.length - 1, totalCols: 0 });
-                        }
-                      });
-                      const totalColumnsInCluster = cols.length;
-                      cluster.forEach((b) => {
-                        const entry = layoutMap.get(b.id);
-                        if (entry) {
-                          entry.totalCols = totalColumnsInCluster;
-                        }
-                      });
-                    });
-                  }
-
+                  const { spaceBookings, layoutMap, getBookingInterval, geometry } = bookingsBySpace.get(space.id)!;
                   const isSpecial = space.name === 'SALA 4';
                   const isDragTarget = dragTargetInfo?.spaceName === space.name;
 
@@ -1296,6 +1316,26 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                             type="button"
                             key={h}
                             style={{ top: `${topPx}px`, height: `${HOUR_HEIGHT}px` }}
+                            onKeyDown={event => {
+                              if (event.key !== 'Tab') return;
+                              let next: Reservation | undefined;
+                              let nextGeometry = geometry;
+                              if (!event.shiftKey && i === TOTAL_HOURS - 1) next = spaceBookings[0];
+                              if (event.shiftKey && i === 0) {
+                                const previousSpace = activeSpaces[activeSpaces.indexOf(space) - 1];
+                                const previous = previousSpace && bookingsBySpace.get(previousSpace.id);
+                                if (previous) {
+                                  next = previous.spaceBookings[previous.spaceBookings.length - 1];
+                                  nextGeometry = previous.geometry;
+                                }
+                              }
+                              if (next) {
+                                event.preventDefault();
+                                pendingFocus.current = next.id;
+                                setFocusedReservationId(next.id);
+                                scrollContainerRef.current?.scrollTo({ top: Math.max(0, nextGeometry.get(next.id)!.top - 10) });
+                              }
+                            }}
                             onClick={() => onNewReservationWithSlot(space.name, dateStr, startH, endH)}
                             onMouseEnter={() => setHoveredSlot({ space: space.name, hour: h })}
                             onMouseLeave={() => setHoveredSlot(null)}
@@ -1332,6 +1372,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                           const blockTop = ((clampStart - START_MINUTES) / 60) * HOUR_HEIGHT;
                           const blockHeight = Math.max(34, ((clampEnd - clampStart) / 60) * HOUR_HEIGHT);
 
+                          if (!intersectsViewport(blockTop, blockHeight, viewport.start, viewport.end)) return null;
                           return (
                             <div
                               key={block.id}
@@ -1394,7 +1435,10 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                       )}
 
                       {/* FLOATING EVENT CARDS (Pastel blocks with full collision prevention) */}
-                      {spaceBookings.map((res) => {
+                      {spaceBookings.map((res, bookingIndex) => {
+                        const box = geometry.get(res.id)!;
+                        if (!box.valid || (!intersectsViewport(box.top, box.height, viewport.start, viewport.end)
+                          && draggedReservation?.id !== res.id && focusedReservationId !== res.id)) return null;
                         const { s: startMin, e: endMin } = getBookingInterval(res);
 
                         const clampStart = Math.max(startMin, START_MINUTES);
@@ -1459,6 +1503,15 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                         return (
                           <div
                             key={res.id}
+                            data-reservation-id={res.id}
+                            ref={node => {
+                              if (node && pendingFocus.current === res.id) {
+                                pendingFocus.current = null;
+                                node.focus({ preventScroll: true });
+                              }
+                            }}
+                            onFocus={() => setFocusedReservationId(res.id)}
+                            onBlur={() => setFocusedReservationId(current => current === res.id ? null : current)}
                             role="button"
                             tabIndex={0}
                             aria-label={`Reserva de ${res.tipoActividad}, ${res.horaInicio} a ${res.horaFin}, responsable ${res.responsable}. Presiona Enter o Espacio para ver detalles.`}
@@ -1470,6 +1523,15 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                               onSelectReservation(res);
                             }}
                             onKeyDown={(e) => {
+                              if (e.key === 'Tab') {
+                                const next = spaceBookings[bookingIndex + (e.shiftKey ? -1 : 1)];
+                                if (next) {
+                                  e.preventDefault();
+                                  pendingFocus.current = next.id;
+                                  setFocusedReservationId(next.id);
+                                  scrollContainerRef.current?.scrollTo({ top: Math.max(0, geometry.get(next.id)!.top - 10) });
+                                }
+                              }
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
                                 e.stopPropagation();

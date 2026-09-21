@@ -64,7 +64,7 @@ import {
 import { recordAuditEntry } from '../services/auditLogService';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import { formatActivitiesInDays } from '../utils/pluralUtils';
-import { generateDailyPdfsForDates } from '../utils/dailySchedulePdf';
+import { generateDailyPdfsForDates, getDailySchedulePdfFilename } from '../utils/dailySchedulePdf';
 
 interface GmailDispatchModalProps {
   isOpen: boolean;
@@ -612,31 +612,44 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
     }
   };
 
-  // Generate daily PDF sheets for printing: ONE PDF PER EACH DAY
-  const dailyPdfAttachments = useMemo(() => {
-    if (effectiveDates.length === 0) return [];
-    return generateDailyPdfsForDates(
-      effectiveDates,
-      reservations,
-      {
-        spaces: availableSpaces,
-        selectedActivityTypes: allActivityTypesSelected ? ['ALL'] : selectedActivityTypes,
-        onlyOccupiedSpaces: true,
-        include3DaysImportant: true,
-        customNote
-      }
-    );
-  }, [effectiveDates, reservations, availableSpaces, allActivityTypesSelected, selectedActivityTypes, customNote]);
+  // Metadata is cheap; document generation happens only in explicit actions.
+  const dailyPdfAttachments = useMemo(() => effectiveDates.map(date => ({
+    date,
+    filename: getDailySchedulePdfFilename(date),
+    activitiesCount: reservations.filter(r => r.fecha === date).length,
+  })), [effectiveDates, reservations]);
+  const [downloadingPdf, setDownloadingPdf] = useState<string | null>(null);
+  const pdfOptions = {
+    spaces: availableSpaces,
+    selectedActivityTypes: allActivityTypesSelected ? ['ALL'] : selectedActivityTypes,
+    onlyOccupiedSpaces: true,
+    include3DaysImportant: true,
+    customNote,
+  };
+  const handleDownloadDailyPdf = async (date: string) => {
+    if (downloadingPdf) return;
+    setDownloadingPdf(date);
+    try {
+      const [item] = await generateDailyPdfsForDates([date], reservations, pdfOptions);
+      item.doc.save(item.filename);
+    } catch (error) {
+      setSendErrorMessage('No se pudo generar el PDF. Intente nuevamente.');
+    } finally {
+      setDownloadingPdf(null);
+    }
+  };
 
   // Execute Real Gmail Sending
   const handleConfirmSend = async () => {
+    if (isSending) return;
     setShowConfirmModal(false);
     setIsSending(true);
     setSendErrorMessage(null);
     setSendSuccessMessage(null);
 
     try {
-      const attachmentsToSend = dailyPdfAttachments.map(item => ({
+      const documents = await generateDailyPdfsForDates(effectiveDates, reservations, pdfOptions);
+      const attachmentsToSend = documents.map(item => ({
         filename: item.filename,
         contentType: 'application/pdf',
         contentBase64: item.base64
@@ -1818,12 +1831,13 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => item.doc.save(item.filename)}
+                        disabled={downloadingPdf !== null}
+                        onClick={() => void handleDownloadDailyPdf(item.date)}
                         className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md text-[11px] font-semibold border border-blue-200 shrink-0 flex items-center space-x-1 cursor-pointer transition"
                         title="Descargar PDF para verificar cómo se imprimirá"
                       >
                         <Download className="w-3 h-3" />
-                        <span>Descargar</span>
+                        <span>{downloadingPdf === item.date ? 'Generando…' : 'Descargar'}</span>
                       </button>
                     </div>
                   ))}
