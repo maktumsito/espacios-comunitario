@@ -3,8 +3,14 @@ import { Reservation } from '../types';
 import {
   subscribeToReservations,
   getLocalCache,
-  getLastSyncTime
+  getLastSyncTime,
+  loadHistoricalReservationsMonth,
+  loadHistoricalReservationsRange
 } from '../services/reservationService';
+import {
+  executeMinuteConflictCleanupMigration,
+  hasMinuteConflictMigrationRun
+} from '../services/migrations/cleanMinuteConflictsMigration';
 import { triggerSonnerToast } from '../services/toastNotificationService';
 
 export interface UseReservationsStateReturn {
@@ -17,15 +23,19 @@ export interface UseReservationsStateReturn {
   lastSyncTime: number | null;
   setLastSyncTime: React.Dispatch<React.SetStateAction<number | null>>;
   isInitialLoading: boolean;
+  isHistoricalLoading: boolean;
   syncStatusToast: { message: string; type: 'success' | 'info' | 'error' | 'warning' } | null;
   setSyncStatusToast: React.Dispatch<React.SetStateAction<{ message: string; type: 'success' | 'info' | 'error' | 'warning' } | null>>;
   triggerSyncToast: (message: string, type?: 'success' | 'info' | 'error' | 'warning') => void;
+  loadHistoricalMonth: (year: number, month: number) => Promise<Reservation[]>;
+  loadHistoricalRange: (startDate: string, endDate: string) => Promise<Reservation[]>;
 }
 
 export function useReservationsState(): UseReservationsStateReturn {
   const [reservations, setReservations] = useState<Reservation[]>(() => getLocalCache());
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [isFirebaseSyncing, setIsFirebaseSyncing] = useState(false);
+  const [isHistoricalLoading, setIsHistoricalLoading] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(() => getLastSyncTime());
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => {
     const cached = getLocalCache();
@@ -49,6 +59,38 @@ export function useReservationsState(): UseReservationsStateReturn {
     },
     []
   );
+
+  // One-time automatic idempotent cleanup migration for obsolete minute conflict IDs
+  useEffect(() => {
+    if (!hasMinuteConflictMigrationRun()) {
+      executeMinuteConflictCleanupMigration().catch((err) => {
+        console.warn('Background minute conflict migration notice:', err);
+      });
+    }
+  }, []);
+
+  // On-demand historical partition loaders
+  const loadHistoricalMonth = useCallback(async (year: number, month: number): Promise<Reservation[]> => {
+    setIsHistoricalLoading(true);
+    try {
+      const fetched = await loadHistoricalReservationsMonth(year, month);
+      setReservations(getLocalCache());
+      return fetched;
+    } finally {
+      setIsHistoricalLoading(false);
+    }
+  }, []);
+
+  const loadHistoricalRange = useCallback(async (startDate: string, endDate: string): Promise<Reservation[]> => {
+    setIsHistoricalLoading(true);
+    try {
+      const fetched = await loadHistoricalReservationsRange(startDate, endDate);
+      setReservations(getLocalCache());
+      return fetched;
+    } finally {
+      setIsHistoricalLoading(false);
+    }
+  }, []);
 
   // Subscribe to Firebase Firestore real-time updates & cache sync events
   useEffect(() => {
@@ -108,8 +150,11 @@ export function useReservationsState(): UseReservationsStateReturn {
     lastSyncTime,
     setLastSyncTime,
     isInitialLoading,
+    isHistoricalLoading,
     syncStatusToast,
     setSyncStatusToast,
-    triggerSyncToast
+    triggerSyncToast,
+    loadHistoricalMonth,
+    loadHistoricalRange
   };
 }

@@ -70,34 +70,12 @@ const purgedIdsInFlight = new Set<string>();
 // Firestore limits writeBatch to 500 operations per batch; 450 provides safety buffer
 const FIRESTORE_MAX_BATCH_SIZE = 450;
 
-export const KNOWN_PURGED_MINUTE_CONFLICT_BASE_IDS: readonly string[] = Object.freeze([
-  'RSV_C16DD34DB5B7',
-  'RSV_99CE0543F176',
-  'RSV_B03B8847D543',
-  'RSV_36028BD587BE',
-  'RSV_71C86219CEAF',
-  'RSV_F5D905C79E3A',
-  'RSV_1E5772637921',
-  'RSV_31C199C6E43C',
-  'RSV_77A256F60E60',
-  'RSV_C4EB393BBE33',
-  'RSV_D42334C65E94',
-  'RSV_RSVC16DD34',
-  'RSV_RSV99CE054',
-  'RSV_RSVB03B884',
-  'RSV_RSV36028BD',
-  'RSV_RSV71C8621',
-  'RSV_RSVF5D905C',
-  'RSV_RSV1E57726',
-  'RSV_RSV31C199C',
-  'RSV_RSV77A256F',
-  'RSV_RSVC4EB393',
-  'RSV_RSVD42334C'
-]);
+// Purged minute conflict tracking is now performed definitively via cleanMinuteConflictsMigration.ts
+// The static array is neutralized to avoid runtime linear scanning over every reservation.
+export const KNOWN_PURGED_MINUTE_CONFLICT_BASE_IDS: readonly string[] = Object.freeze([]);
 
-export function isPurgedMinuteConflictId(id: string): boolean {
-  if (!id) return false;
-  return KNOWN_PURGED_MINUTE_CONFLICT_BASE_IDS.some(base => id.includes(base) || id === base);
+export function isPurgedMinuteConflictId(_id: string): boolean {
+  return false;
 }
 
 // ============================================================================
@@ -503,7 +481,7 @@ export function getLocalCache(): Reservation[] {
   // Fast path: In-memory cache is valid
   if (inMemoryReservationsCache && inMemoryReservationsCache.length > 0) {
     return inMemoryReservationsCache.filter(
-      r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha) && !isPurgedMinuteConflictId(r.id)
+      r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha)
     );
   }
 
@@ -516,7 +494,7 @@ export function getLocalCache(): Reservation[] {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed) && parsed.length > 0) {
         const filtered = parsed.filter(
-          r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha) && !isPurgedMinuteConflictId(r.id)
+          r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha)
         );
         inMemoryReservationsCache = filtered;
         inMemoryDataHash = calculateReservationsHash(filtered);
@@ -535,7 +513,7 @@ export function getLocalCache(): Reservation[] {
         const parsed = JSON.parse(legacyCached);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const migrated = parsed.filter(
-            r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha) && !isPurgedMinuteConflictId(r.id)
+            r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha)
           );
           if (migrated.length > 0) {
             // Write to current version format and cleanup old keys
@@ -552,7 +530,7 @@ export function getLocalCache(): Reservation[] {
 
   // Fallback to static initial dataset
   const fallback = INITIAL_RESERVATIONS.filter(
-    r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha) && !isPurgedMinuteConflictId(r.id)
+    r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha)
   );
   inMemoryReservationsCache = fallback;
   inMemoryDataHash = calculateReservationsHash(fallback);
@@ -570,7 +548,7 @@ export function setLocalCache(
   try {
     const deletedSet = getDeletedIds();
     const cleanData = data.filter(
-      r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha) && !isPurgedMinuteConflictId(r.id)
+      r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha)
     );
 
     const newDataHash = calculateReservationsHash(cleanData);
@@ -667,7 +645,7 @@ export function subscribeToReservations(
       if (idbData && idbData.length > 0) {
         const deletedSet = getDeletedIds();
         const filtered = idbData.filter(
-          r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha) && !isPurgedMinuteConflictId(r.id)
+          r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha)
         );
         inMemoryReservationsCache = filtered;
         inMemoryDataHash = calculateReservationsHash(filtered);
@@ -681,18 +659,17 @@ export function subscribeToReservations(
     const db = getDb();
     const reservasCol = collection(db, COLLECTION_NAME);
 
-    // QUOTA OPTIMIZATION: If local cache already exists with historical data,
-    // only subscribe to active reservations (last 90 days onward) to slash Firestore read consumption by >90%.
-    const localExisting = getLocalCache();
-    const hasLocalHistory = localExisting.length > 0;
-
+    // QUOTA OPTIMIZATION: Always subscribe strictly to active reservations (last 90 days onward)
+    // to slash Firestore read consumption by >90% regardless of whether local cache is initially populated.
     const d = new Date();
     d.setDate(d.getDate() - 90);
     const activeWindowStartDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-    const activeQuery = hasLocalHistory
-      ? query(reservasCol, where('fecha', '>=', activeWindowStartDate), orderBy('fecha', 'asc'))
-      : reservasCol;
+    const activeQuery = query(
+      reservasCol,
+      where('fecha', '>=', activeWindowStartDate),
+      orderBy('fecha', 'asc')
+    );
 
     const unsubscribe = onSnapshot(
       activeQuery,
@@ -711,15 +688,10 @@ export function subscribeToReservations(
             list.push(normalizeReservationFromFirestore(docSnap.id, rawData));
           });
 
-          // If querying active window, non-destructively merge with historical cache
-          let sorted: Reservation[];
-          if (hasLocalHistory) {
-            const currentCached = getLocalCache();
-            const historical = currentCached.filter(r => r.fecha < activeWindowStartDate);
-            sorted = [...historical, ...list].sort(compareReservationsByDate);
-          } else {
-            sorted = list.sort(compareReservationsByDate);
-          }
+          // Non-destructively merge active window with historical cache
+          const currentCached = getLocalCache();
+          const historical = currentCached.filter(r => r.fecha < activeWindowStartDate);
+          const sorted = [...historical, ...list].sort(compareReservationsByDate);
 
           // Compute incoming snapshot hash
           const incomingFirestoreHash = calculateReservationsHash(sorted);
@@ -748,13 +720,10 @@ export function subscribeToReservations(
           });
           onData(sorted, true, false, syncTimestamp);
         } else {
-          // Seed dataset if Firestore is uninitialized
+          // If active window is empty, notify subscribers with existing local cache or empty state.
+          // Never trigger automatic seedAllToFirestore here to avoid exhausting write quotas.
           const local = getLocalCache();
-          const dataToSeed = local.length > 0 ? local : INITIAL_RESERVATIONS;
-          seedAllToFirestore(dataToSeed).catch(err => {
-            console.warn('Initial seed fallback:', err);
-            onData(dataToSeed, false, false, getLocalCacheMetadata()?.lastSyncTime ?? null);
-          });
+          onData(local, true, false, getLocalCacheMetadata()?.lastSyncTime ?? Date.now());
         }
       },
       (error) => {
@@ -873,6 +842,124 @@ export async function fetchReservationsByDateRange(
     console.warn('fetchReservationsByDateRange failed, serving from local cache:', e);
     const local = getLocalCache();
     return local.filter(r => r.fecha >= startDate && r.fecha <= endDate);
+  }
+}
+
+// ============================================================================
+// HISTORICAL PARTITIONING (ON-DEMAND MONTH / RANGE LOADER)
+// ============================================================================
+
+export const DEFAULT_ACTIVE_WINDOW_DAYS = 90;
+
+export function getActiveWindowStartDate(daysBack: number = DEFAULT_ACTIVE_WINDOW_DAYS): string {
+  const d = new Date();
+  d.setDate(d.getDate() - daysBack);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const loadedHistoricalMonthsSet = new Set<string>();
+
+export function isHistoricalMonthLoaded(yearMonth: string): boolean {
+  return loadedHistoricalMonthsSet.has(yearMonth.slice(0, 7));
+}
+
+/**
+ * Loads reservations for a specific historical month (e.g. year: 2025, month: 11)
+ * strictly on demand from Firestore, recording read metrics and merging into the
+ * local cache without full-collection scanning.
+ */
+export async function loadHistoricalReservationsMonth(
+  year: number,
+  month: number
+): Promise<Reservation[]> {
+  const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+  if (loadedHistoricalMonthsSet.has(monthKey)) {
+    const local = getLocalCache();
+    return local.filter(r => r.fecha.startsWith(monthKey));
+  }
+
+  const startDate = `${monthKey}-01`;
+  const lastDayDate = new Date(year, month, 0);
+  const endDate = `${monthKey}-${String(lastDayDate.getDate()).padStart(2, '0')}`;
+
+  try {
+    const db = getDb();
+    const reservasCol = collection(db, COLLECTION_NAME);
+    const rangeQuery = query(
+      reservasCol,
+      where('fecha', '>=', startDate),
+      where('fecha', '<=', endDate),
+      orderBy('fecha', 'asc')
+    );
+
+    const snapshot = await getDocs(rangeQuery);
+    recordFirestoreRead('reservas_historicas', snapshot.docs.length);
+
+    const deletedSet = getDeletedIds();
+    const list: Reservation[] = [];
+
+    snapshot.forEach((docSnap) => {
+      if (deletedSet.has(docSnap.id)) return;
+      list.push(normalizeReservationFromFirestore(docSnap.id, docSnap.data()));
+    });
+
+    loadedHistoricalMonthsSet.add(monthKey);
+
+    if (list.length > 0) {
+      const current = getLocalCache();
+      const newIds = new Set(list.map(r => r.id));
+      const merged = current.filter(r => !newIds.has(r.id)).concat(list).sort(compareReservationsByDate);
+      setLocalCache(merged);
+    }
+
+    return list;
+  } catch (err: any) {
+    console.warn(`Notice loading historical partition for ${monthKey}:`, err?.message || err);
+    const local = getLocalCache();
+    return local.filter(r => r.fecha.startsWith(monthKey));
+  }
+}
+
+/**
+ * Loads reservations for an arbitrary historical date range on demand.
+ */
+export async function loadHistoricalReservationsRange(
+  startDate: string,
+  endDate: string
+): Promise<Reservation[]> {
+  if (!startDate || !endDate || startDate > endDate) return [];
+  try {
+    const db = getDb();
+    const reservasCol = collection(db, COLLECTION_NAME);
+    const rangeQuery = query(
+      reservasCol,
+      where('fecha', '>=', startDate),
+      where('fecha', '<=', endDate),
+      orderBy('fecha', 'asc')
+    );
+
+    const snapshot = await getDocs(rangeQuery);
+    recordFirestoreRead('reservas_historicas', snapshot.docs.length);
+
+    const deletedSet = getDeletedIds();
+    const list: Reservation[] = [];
+
+    snapshot.forEach((docSnap) => {
+      if (deletedSet.has(docSnap.id)) return;
+      list.push(normalizeReservationFromFirestore(docSnap.id, docSnap.data()));
+    });
+
+    if (list.length > 0) {
+      const current = getLocalCache();
+      const newIds = new Set(list.map(r => r.id));
+      const merged = current.filter(r => !newIds.has(r.id)).concat(list).sort(compareReservationsByDate);
+      setLocalCache(merged);
+    }
+
+    return list;
+  } catch (err: any) {
+    console.warn(`Notice loading historical range [${startDate}, ${endDate}]:`, err?.message || err);
+    return [];
   }
 }
 
@@ -1115,24 +1202,33 @@ export async function saveReservationsBatch(reservas: readonly Reservation[]): P
     });
 
     if (slotsMap.size > 0) {
-      Promise.all(Array.from(slotsMap.entries()).map(async ([slotId, { fecha, espacio, bookings }]) => {
-        try {
-          const slotRef = doc(db, SLOTS_COLLECTION, slotId);
-          await runTransaction(db, async (tx) => {
-            const snap = await tx.get(slotRef);
-            let existingBookings: any[] = [];
-            if (snap.exists()) {
-              const data = snap.data();
-              existingBookings = Array.isArray(data.bookings) ? data.bookings : [];
-            }
-            const incomingIds = new Set(bookings.map(b => b.id));
-            const merged = existingBookings.filter(b => !incomingIds.has(b.id)).concat(bookings);
-            tx.set(slotRef, { fecha, espacio, bookings: merged, updatedAt: nowIso }, { merge: true });
-          });
-        } catch {
-          // Ignore non-critical background slot sync error
+      const slotEntries = Array.from(slotsMap.entries());
+      const CONCURRENCY_LIMIT = 5;
+      (async () => {
+        for (let i = 0; i < slotEntries.length; i += CONCURRENCY_LIMIT) {
+          const chunk = slotEntries.slice(i, i + CONCURRENCY_LIMIT);
+          await Promise.all(
+            chunk.map(async ([slotId, { fecha, espacio, bookings }]) => {
+              try {
+                const slotRef = doc(db, SLOTS_COLLECTION, slotId);
+                await runTransaction(db, async (tx) => {
+                  const snap = await tx.get(slotRef);
+                  let existingBookings: any[] = [];
+                  if (snap.exists()) {
+                    const data = snap.data();
+                    existingBookings = Array.isArray(data.bookings) ? data.bookings : [];
+                  }
+                  const incomingIds = new Set(bookings.map((b) => b.id));
+                  const merged = existingBookings.filter((b) => !incomingIds.has(b.id)).concat(bookings);
+                  tx.set(slotRef, { fecha, espacio, bookings: merged, updatedAt: nowIso }, { merge: true });
+                });
+              } catch {
+                // Ignore non-critical background slot sync error
+              }
+            })
+          );
         }
-      })).catch(() => {});
+      })().catch(() => {});
     }
 
     setLastSyncTime(Date.now());
@@ -1206,22 +1302,31 @@ export async function deleteReservationsBatch(ids: string[]): Promise<number> {
     });
 
     if (slotKeysToClean.size > 0) {
-      Promise.all(Array.from(slotKeysToClean).map(async (slotId) => {
-        try {
-          const slotRef = doc(db, SLOTS_COLLECTION, slotId);
-          await runTransaction(db, async (tx) => {
-            const snap = await tx.get(slotRef);
-            if (snap.exists()) {
-              const data = snap.data();
-              const bookings = Array.isArray(data.bookings) ? data.bookings : [];
-              const rem = bookings.filter(b => !idsSet.has(b.id));
-              tx.set(slotRef, { bookings: rem, updatedAt: new Date().toISOString() }, { merge: true });
-            }
-          });
-        } catch {
-          // ignore non-critical slot clean
+      const keys = Array.from(slotKeysToClean);
+      const CONCURRENCY_LIMIT = 5;
+      (async () => {
+        for (let i = 0; i < keys.length; i += CONCURRENCY_LIMIT) {
+          const chunk = keys.slice(i, i + CONCURRENCY_LIMIT);
+          await Promise.all(
+            chunk.map(async (slotId) => {
+              try {
+                const slotRef = doc(db, SLOTS_COLLECTION, slotId);
+                await runTransaction(db, async (tx) => {
+                  const snap = await tx.get(slotRef);
+                  if (snap.exists()) {
+                    const data = snap.data();
+                    const bookings = Array.isArray(data.bookings) ? data.bookings : [];
+                    const rem = bookings.filter((b) => !idsSet.has(b.id));
+                    tx.set(slotRef, { bookings: rem, updatedAt: new Date().toISOString() }, { merge: true });
+                  }
+                });
+              } catch {
+                // ignore non-critical slot clean
+              }
+            })
+          );
         }
-      })).catch(() => {});
+      })().catch(() => {});
     }
 
     await Promise.all(batchPromises);
@@ -1266,22 +1371,31 @@ export async function deleteSeriesByRecurrenteId(recurrenteId: string, knownIds?
     });
 
     if (slotKeysToClean.size > 0) {
-      Promise.all(Array.from(slotKeysToClean).map(async (slotId) => {
-        try {
-          const slotRef = doc(db, SLOTS_COLLECTION, slotId);
-          await runTransaction(db, async (tx) => {
-            const snap = await tx.get(slotRef);
-            if (snap.exists()) {
-              const data = snap.data();
-              const bookings = Array.isArray(data.bookings) ? data.bookings : [];
-              const remaining = bookings.filter(b => !deleteSet.has(b.id));
-              tx.set(slotRef, { bookings: remaining, updatedAt: new Date().toISOString() }, { merge: true });
-            }
-          });
-        } catch {
-          // ignore non-critical slot clean
+      const keys = Array.from(slotKeysToClean);
+      const CONCURRENCY_LIMIT = 5;
+      (async () => {
+        for (let i = 0; i < keys.length; i += CONCURRENCY_LIMIT) {
+          const chunk = keys.slice(i, i + CONCURRENCY_LIMIT);
+          await Promise.all(
+            chunk.map(async (slotId) => {
+              try {
+                const slotRef = doc(db, SLOTS_COLLECTION, slotId);
+                await runTransaction(db, async (tx) => {
+                  const snap = await tx.get(slotRef);
+                  if (snap.exists()) {
+                    const data = snap.data();
+                    const bookings = Array.isArray(data.bookings) ? data.bookings : [];
+                    const remaining = bookings.filter((b) => !deleteSet.has(b.id));
+                    tx.set(slotRef, { bookings: remaining, updatedAt: new Date().toISOString() }, { merge: true });
+                  }
+                });
+              } catch {
+                // ignore non-critical slot clean
+              }
+            })
+          );
         }
-      })).catch(() => {});
+      })().catch(() => {});
     }
 
     await Promise.all(batchPromises);
@@ -1591,29 +1705,16 @@ export async function cleanConflictingMinuteReservations(currentReservations?: R
           } else if (!aClosed && bClosed) {
             idsToDelete.add(a.id);
           } else if (!aClosed && !bClosed) {
-            if (isPurgedMinuteConflictId(b.id)) {
+            const devA = (sA % 60) + (eA % 60);
+            const devB = (sB % 60) + (eB % 60);
+            if (devB >= devA) {
               idsToDelete.add(b.id);
-            } else if (isPurgedMinuteConflictId(a.id)) {
-              idsToDelete.add(a.id);
             } else {
-              const devA = (sA % 60) + (eA % 60);
-              const devB = (sB % 60) + (eB % 60);
-              if (devB >= devA) {
-                idsToDelete.add(b.id);
-              } else {
-                idsToDelete.add(a.id);
-              }
+              idsToDelete.add(a.id);
             }
           }
         }
       }
-    }
-  });
-
-  // Also include any explicitly known purged conflict IDs
-  current.forEach(r => {
-    if (isPurgedMinuteConflictId(r.id)) {
-      idsToDelete.add(r.id);
     }
   });
 

@@ -12,6 +12,7 @@ import { MaintenanceDashboardView } from './MaintenanceDashboardView';
 import { ApplicantDirectoryView } from './ApplicantDirectoryView';
 import { AdminGmailConfig } from './AdminGmailConfig';
 import { AdminRecurringView } from './AdminRecurringView';
+import { executeMinuteConflictCleanupMigration } from '../services/migrations/cleanMinuteConflictsMigration';
 import {
   Building2,
   Sparkles,
@@ -249,6 +250,30 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [spaceFormError, setSpaceFormError] = useState('');
   const [loanFormError, setLoanFormError] = useState('');
   const [activityFormError, setActivityFormError] = useState('');
+
+  // ----------------------------------------------------
+  // FIRESTORE QUOTA & MINUTE CONFLICTS MIGRATION
+  // ----------------------------------------------------
+  const [isMigratingConflicts, setIsMigratingConflicts] = useState(false);
+  const [conflictMigrationResult, setConflictMigrationResult] = useState<string | null>(null);
+
+  const handleRunConflictMigration = async () => {
+    setIsMigratingConflicts(true);
+    try {
+      const res = await executeMinuteConflictCleanupMigration({ force: true });
+      if (res.success) {
+        setConflictMigrationResult(
+          `✓ Depuración completada: ${res.deletedFromFirestore} IDs verificados/eliminados en Firestore, ${res.deletedFromLocal} registros eliminados en cachés locales.`
+        );
+      } else {
+        setConflictMigrationResult(`⚠️ Error en depuración: ${res.error || 'Error de conexión'}`);
+      }
+    } catch (err: any) {
+      setConflictMigrationResult(`⚠️ Error ejecutando depuración: ${err?.message || err}`);
+    } finally {
+      setIsMigratingConflicts(false);
+    }
+  };
 
   // ----------------------------------------------------
   // EQUIPMENT MANAGEMENT STATE
@@ -1722,6 +1747,35 @@ export const AdminView: React.FC<AdminViewProps> = ({
             onSaveBlock={onSaveBlock || (async () => {})}
             onDeleteBlock={onDeleteBlock || (async () => {})}
           />
+
+          {/* Card de Optimización de Base de Datos y Cuotas Firestore */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="max-w-xl">
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Database className="w-4 h-4 text-blue-600" />
+                  <span>Depuración Definitiva de Conflictos y Cuotas de Firestore</span>
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Elimina registros obsoletos de desfase de minutos en Firestore y limpia la caché local para preservar la cuota diaria del Spark Plan y evitar transacciones duplicadas.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleRunConflictMigration}
+                disabled={isMigratingConflicts}
+                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-2 cursor-pointer shrink-0"
+              >
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>{isMigratingConflicts ? 'Depurando en Firestore...' : 'Ejecutar Limpieza Definitiva'}</span>
+              </button>
+            </div>
+            {conflictMigrationResult && (
+              <div className="text-xs font-semibold px-3 py-2 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl animate-fadeIn">
+                {conflictMigrationResult}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

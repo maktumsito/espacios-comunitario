@@ -6,6 +6,7 @@ import {
   saveReservation,
   saveReservationsBatch,
   deleteReservationById,
+  deleteReservationsBatch,
   deleteSeriesByRecurrenteId,
   seedAllToFirestore,
   deleteAllHolidayReservations,
@@ -119,9 +120,12 @@ export default function App() {
     lastSyncTime,
     setLastSyncTime,
     isInitialLoading,
+    isHistoricalLoading,
     syncStatusToast,
     setSyncStatusToast,
-    triggerSyncToast
+    triggerSyncToast,
+    loadHistoricalMonth,
+    loadHistoricalRange
   } = useReservationsState();
 
   // 3. Modals & Dialogs Hook
@@ -818,8 +822,8 @@ export default function App() {
           // Asynchronously persist to database and record audit in background
           (async () => {
             try {
-              for (const delId of idsToDelete) {
-                deleteReservationById(delId).catch((err) => console.warn('Error deleting old series session:', err));
+              if (idsToDelete.length > 0) {
+                await deleteReservationsBatch(idsToDelete);
               }
 
               await saveReservationsBatch(updatedSeriesList);
@@ -1942,6 +1946,8 @@ export default function App() {
               spaces={spaces}
               selectedDate={selectedDailyDate}
               spaceBlocks={spaceBlocks}
+              onLoadHistoricalMonth={loadHistoricalMonth}
+              isHistoricalLoading={isHistoricalLoading}
               onNavigateToDay={(day) => {
                 setSelectedDailyDate(day);
                 if (isMobileDevice()) {

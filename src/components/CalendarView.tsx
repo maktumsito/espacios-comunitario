@@ -4,6 +4,7 @@ import { Reservation, SpaceInfo, isSingleDayMultiSpaceReservation, SpaceBlock } 
 import { SPACES_LIST } from '../data/spacesData';
 import { getChileanHolidayInfo, ChileanHoliday } from '../utils/holidayUtils';
 import { useReservationDateIndex } from '../utils/reservationIndex';
+import { getActiveWindowStartDate } from '../services/reservationService';
 import {
   ChevronLeft,
   ChevronRight,
@@ -80,6 +81,7 @@ interface CalendarHeaderProps {
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onToday: () => void;
+  isHistoricalLoading?: boolean;
 }
 
 /**
@@ -89,7 +91,8 @@ const CalendarHeader = memo<CalendarHeaderProps>(({
   currentDate,
   onPrevMonth,
   onNextMonth,
-  onToday
+  onToday,
+  isHistoricalLoading
 }) => {
   return (
     <div className="bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-2 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -98,9 +101,16 @@ const CalendarHeader = memo<CalendarHeaderProps>(({
           <CalendarIcon className="w-4 h-4" />
         </div>
         <div>
-          <h2 className="text-sm sm:text-base font-bold text-slate-900 capitalize leading-tight">
-            {format(currentDate, 'MMMM yyyy', { locale: es })}
-          </h2>
+          <div className="flex items-center space-x-2">
+            <h2 className="text-sm sm:text-base font-bold text-slate-900 capitalize leading-tight">
+              {format(currentDate, 'MMMM yyyy', { locale: es })}
+            </h2>
+            {isHistoricalLoading && (
+              <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-semibold border border-blue-200 animate-pulse">
+                Sincronizando mes histórico...
+              </span>
+            )}
+          </div>
           <p className="text-[11px] text-slate-500">
             Haz clic en cualquier día para ver el resumen o entrar al Horario Diario detallado
           </p>
@@ -637,6 +647,8 @@ interface CalendarViewProps {
   onNavigateToDay?: (day: Date) => void;
   onSelectReservation: (reserva: Reservation) => void;
   onNewReservationForDate: (dateStr: string) => void;
+  onLoadHistoricalMonth?: (year: number, month: number) => Promise<any>;
+  isHistoricalLoading?: boolean;
 }
 
 export const CalendarView: React.FC<CalendarViewProps> = ({
@@ -646,10 +658,24 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   spaceBlocks = [],
   onNavigateToDay,
   onSelectReservation,
-  onNewReservationForDate
+  onNewReservationForDate,
+  onLoadHistoricalMonth,
+  isHistoricalLoading = false
 }) => {
   const [currentDate, setCurrentDate] = useState<Date>(() => propSelectedDate || new Date());
   const [selectedDay, setSelectedDay] = useState<Date>(() => propSelectedDate || new Date());
+
+  // On-demand historical month loading when navigating prior to active window
+  useEffect(() => {
+    if (!onLoadHistoricalMonth) return;
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth() + 1;
+    const activeStart = getActiveWindowStartDate(90);
+    const monthStartStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    if (monthStartStr < activeStart) {
+      onLoadHistoricalMonth(year, month);
+    }
+  }, [currentDate, onLoadHistoricalMonth]);
 
   // Keep internal calendar state synchronized with incoming date changes
   useEffect(() => {
@@ -749,6 +775,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         onPrevMonth={handlePrevMonth}
         onNextMonth={handleNextMonth}
         onToday={handleToday}
+        isHistoricalLoading={isHistoricalLoading}
       />
 
       {/* Color Legend Bar */}
