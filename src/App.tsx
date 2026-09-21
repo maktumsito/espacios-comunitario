@@ -95,7 +95,7 @@ import {
 } from './services/authService';
 import { LoginScreen } from './components/LoginScreen';
 import { AppFooter } from './components/AppFooter';
-import { Wifi, WifiOff, Clock, ShieldCheck, Filter, RotateCcw } from 'lucide-react';
+import { Wifi, WifiOff, Clock, ShieldCheck, Filter, RotateCcw, AlertTriangle } from 'lucide-react';
 import { checkAndRunScheduledBackup } from './services/backupService';
 import { getActiveDraftSummary, removeStoredDraft, ActiveDraftSummary } from './hooks/useReservationAutosave';
 
@@ -445,8 +445,42 @@ export default function App() {
 
     const filterEspacio = filters.espacio ? filters.espacio.toUpperCase() : null;
     const filterTipo = filters.tipoActividad || null;
-    const filterDesde = filters.fechaDesde || null;
-    const filterHasta = filters.fechaHasta || null;
+
+    // Normalize boundary dates (handles YYYY, YYYY-MM, YYYY-MM-DD, DD-MM-YYYY)
+    const normalizeFilterBoundary = (dateStr: string, boundary: 'start' | 'end'): string | null => {
+      const trimmed = (dateStr || '').trim();
+      if (!trimmed) return null;
+      if (/^\d{4}$/.test(trimmed)) {
+        return boundary === 'start' ? `${trimmed}-01-01` : `${trimmed}-12-31`;
+      }
+      if (/^\d{4}-\d{2}$/.test(trimmed)) {
+        return boundary === 'start' ? `${trimmed}-01` : `${trimmed}-31`;
+      }
+      if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+        return trimmed.slice(0, 10);
+      }
+      if (/^\d{2}-\d{2}-\d{4}/.test(trimmed)) {
+        const [d, m, y] = trimmed.slice(0, 10).split('-');
+        return `${y}-${m}-${d}`;
+      }
+      return trimmed;
+    };
+
+    const normalizeReservationDate = (dateStr: string): string => {
+      if (!dateStr) return '';
+      const trimmed = dateStr.trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+        return trimmed.slice(0, 10);
+      }
+      if (/^\d{2}-\d{2}-\d{4}/.test(trimmed)) {
+        const [d, m, y] = trimmed.slice(0, 10).split('-');
+        return `${y}-${m}-${d}`;
+      }
+      return trimmed;
+    };
+
+    const filterDesde = normalizeFilterBoundary(filters.fechaDesde, 'start');
+    const filterHasta = normalizeFilterBoundary(filters.fechaHasta, 'end');
     const filterRecurrentes = Boolean(filters.soloRecurrentes);
     const filterImportantes = Boolean(filters.soloImportantes);
     const filterTopamiento = Boolean(filters.soloConTopamiento);
@@ -466,9 +500,10 @@ export default function App() {
       if (filterRecurrentes && r.actividadRecurrente !== 'Sí') return false;
       if (filterImportantes && r.importante !== 'Sí') return false;
 
-      // Date Range (fast string ISO comparisons)
-      if (filterDesde && r.fecha < filterDesde) return false;
-      if (filterHasta && r.fecha > filterHasta) return false;
+      // Date Range (fast normalized ISO comparisons)
+      const rFecha = normalizeReservationDate(r.fecha);
+      if (filterDesde && rFecha < filterDesde) return false;
+      if (filterHasta && rFecha > filterHasta) return false;
 
       // Espacio
       if (filterEspacio && r.espacio.toUpperCase() !== filterEspacio) {

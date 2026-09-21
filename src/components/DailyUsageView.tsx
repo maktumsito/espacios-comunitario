@@ -104,15 +104,32 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
   onNavigateToMaintenance,
   onDateChange
 }) => {
-  // Single controlled source of truth: propSelectedDate || initialDate with local fallback
-  const [fallbackDate, setFallbackDate] = useState<Date>(() => propSelectedDate || initialDate || new Date());
-  const selectedDate = propSelectedDate || initialDate || fallbackDate;
+  // Single controlled source of truth for the active date rendering the agenda.
+  // Supports both controlled mode (via propSelectedDate) and uncontrolled mode (via initialDate).
+  const [currentDate, setCurrentDate] = useState<Date>(() => propSelectedDate || initialDate || new Date());
+
+  // Synchronize internal state when propSelectedDate changes from parent
+  useEffect(() => {
+    if (propSelectedDate) {
+      setCurrentDate(propSelectedDate);
+    }
+  }, [propSelectedDate]);
+
+  // Synchronize internal state if initialDate changes while propSelectedDate is not provided
+  useEffect(() => {
+    if (initialDate && !propSelectedDate) {
+      setCurrentDate(initialDate);
+    }
+  }, [initialDate, propSelectedDate]);
+
+  // The active date rendering the agenda is currentDate
+  const selectedDate = currentDate;
   const [searchQuery, setSearchQuery] = useState<string>(() => globalFilters?.search || '');
   const [dateErrorMessage, setDateErrorMessage] = useState<string | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<{ space: string; hour: number } | null>(null);
 
   const updateSelectedDate = useCallback((newDate: Date) => {
-    setFallbackDate(newDate);
+    setCurrentDate(newDate);
     onDateChange?.(newDate);
   }, [onDateChange]);
 

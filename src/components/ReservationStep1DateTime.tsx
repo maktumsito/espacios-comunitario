@@ -337,25 +337,9 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
             value={formData.horaInicio || '10:00'}
             onChange={(e) => {
               const newStart = e.target.value;
-              const prevStart = formData.horaInicio || '10:00';
-              const prevEnd = formData.horaFin || '11:00';
-              const prevSMin = timeStringToMinutes(prevStart);
-              const prevEMin = timeStringToMinutes(prevEnd);
-              const sMin = timeStringToMinutes(newStart);
-
-              // Preserve existing duration (e.g. 60 min, 90 min) only if not overnight
-              const currentDuration = (prevEMin > prevSMin) ? (prevEMin - prevSMin) : 60;
-              let newEnd = prevEnd;
-
-              if (!formData.terminaDiaSiguiente && sMin >= 0) {
-                const targetEndMin = Math.min(1439, sMin + currentDuration);
-                newEnd = formatMinutesToTime(targetEndMin);
-              }
-
               setFormData(prev => ({
                 ...prev,
-                horaInicio: newStart,
-                horaFin: newEnd
+                horaInicio: newStart
               }));
             }}
             className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 shadow-xs font-bold ${
@@ -403,9 +387,13 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
         </div>
 
         {!timeValidation.isValid && (
-          <div className="sm:col-span-4 p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center space-x-2.5 shadow-2xs animate-fadeIn font-semibold">
+          <div
+            id="time-validation-error-message"
+            role="alert"
+            className="sm:col-span-4 p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center space-x-2.5 shadow-2xs animate-fadeIn font-semibold"
+          >
             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>⚠️ {timeValidation.error || 'La hora de término debe ser posterior a la hora de inicio.'}</span>
+            <span>⚠️ {timeValidation.error || 'La hora de término debe ser posterior a la de inicio.'}</span>
           </div>
         )}
 

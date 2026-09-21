@@ -3,10 +3,11 @@ import { Reservation } from '../types';
 
 const defaultFuseOptions: IFuseOptions<Reservation> = {
   keys: [
-    { name: 'responsable', weight: 0.35 },
+    { name: 'responsable', weight: 0.3 },
     { name: 'descripcion', weight: 0.25 },
     { name: 'tipoActividad', weight: 0.15 },
     { name: 'espacio', weight: 0.15 },
+    { name: 'fecha', weight: 0.15 },
     { name: 'rut', weight: 0.1 },
     { name: 'emailContacto', weight: 0.05 },
     { name: 'telefonoContacto', weight: 0.05 },
@@ -33,6 +34,7 @@ export function fuzzySearchReservations(
   // Clean RUT digits for exact RUT match priority
   const cleanRutQ = trimmed.replace(/[^0-9kK]/g, '').toLowerCase();
   const normQ = trimmed.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const isYearOrDateQuery = /^\d{4}$/.test(trimmed) || /^\d{4}-\d{2}/.test(trimmed) || /^\d{2}-\d{2}-\d{4}/.test(trimmed);
 
   // 1. Separate exact and substring matches into priority tiers
   const exactMatches: { res: Reservation; priority: number }[] = [];
@@ -45,26 +47,29 @@ export function fuzzySearchReservations(
     const normTipo = (r.tipoActividad || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const normEsp = (r.espacio || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const normDesc = (r.descripcion || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const normFecha = (r.fecha || '').trim().toLowerCase();
 
-    // Priority 1: Exact ID match or exact RUT match or exact Name/Activity match
+    // Priority 1: Exact ID match or exact RUT match or exact Name/Activity/Fecha match
     if (
       normId === normQ ||
       (cleanRutQ.length >= 7 && cleanR === cleanRutQ) ||
       normResp === normQ ||
-      normTipo === normQ
+      normTipo === normQ ||
+      normFecha === normQ
     ) {
       exactMatches.push({ res: r, priority: 1 });
       exactMatchedIds.add(r.id);
       continue;
     }
 
-    // Priority 2: Starts with query (name, activity, space, RUT, ID)
+    // Priority 2: Starts with query (name, activity, space, RUT, ID, fecha)
     if (
       normResp.startsWith(normQ) ||
       normTipo.startsWith(normQ) ||
       normEsp.startsWith(normQ) ||
       (cleanRutQ.length >= 3 && cleanR.startsWith(cleanRutQ)) ||
-      normId.startsWith(normQ)
+      normId.startsWith(normQ) ||
+      normFecha.startsWith(normQ)
     ) {
       exactMatches.push({ res: r, priority: 2 });
       exactMatchedIds.add(r.id);
@@ -77,6 +82,7 @@ export function fuzzySearchReservations(
       normTipo.includes(normQ) ||
       normEsp.includes(normQ) ||
       normDesc.includes(normQ) ||
+      normFecha.includes(normQ) ||
       (cleanRutQ.length >= 3 && cleanR.includes(cleanRutQ)) ||
       normId.includes(normQ)
     ) {
@@ -88,13 +94,15 @@ export function fuzzySearchReservations(
   exactMatches.sort((a, b) => a.priority - b.priority);
   const prioritizedResults: Reservation[] = exactMatches.map((m) => m.res);
 
-  // 2. Fallback to Fuse.js for typo tolerance
-  const fuse = new Fuse(reservations, defaultFuseOptions);
-  const fuseResults = fuse.search(trimmed);
+  // 2. Fallback to Fuse.js for typo tolerance (only for non-date/year textual queries)
+  if (!isYearOrDateQuery) {
+    const fuse = new Fuse(reservations, defaultFuseOptions);
+    const fuseResults = fuse.search(trimmed);
 
-  for (const match of fuseResults) {
-    if (!exactMatchedIds.has(match.item.id)) {
-      prioritizedResults.push(match.item);
+    for (const match of fuseResults) {
+      if (!exactMatchedIds.has(match.item.id)) {
+        prioritizedResults.push(match.item);
+      }
     }
   }
 

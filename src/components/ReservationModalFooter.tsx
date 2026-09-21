@@ -192,9 +192,13 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
           <button
             id="btn-wizard-next"
             type="button"
-            disabled={wizardStep === 1 ? !isStep1Completed : !isStep2Completed}
+            disabled={wizardStep === 1 ? (!isStep1Completed || !timeValidation.isValid) : !isStep2Completed}
             onClick={() => {
               if (wizardStep === 1) {
+                if (!timeValidation.isValid) {
+                  validateStep1(true);
+                  return;
+                }
                 if (validateStep1(true)) {
                   setWizardStep(2);
                   scrollToModalTop();
@@ -207,7 +211,7 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
               }
             }}
             className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold shadow-xs transition flex items-center space-x-1.5 ${
-              (wizardStep === 1 ? !isStep1Completed : !isStep2Completed)
+              (wizardStep === 1 ? (!isStep1Completed || !timeValidation.isValid) : !isStep2Completed)
                 ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
                 : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
             }`}
