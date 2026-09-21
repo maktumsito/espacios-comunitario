@@ -334,7 +334,9 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
             aria-label="Hora de inicio de la reserva"
             type="time"
             required
-            value={formData.horaInicio || '10:00'}
+            value={formData.horaInicio ?? ''}
+            aria-invalid={!timeValidation.isValid}
+            aria-describedby={!timeValidation.isValid ? 'time-validation-error-message' : undefined}
             onChange={(e) => {
               const newStart = e.target.value;
               setFormData(prev => ({
@@ -360,7 +362,9 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
             aria-label="Hora de término de la reserva"
             type="time"
             required
-            value={formData.horaFin || '11:00'}
+            value={formData.horaFin ?? ''}
+            aria-invalid={!timeValidation.isValid}
+            aria-describedby={!timeValidation.isValid ? 'time-validation-error-message' : undefined}
             onChange={(e) => {
               const newEnd = e.target.value;
               setFormData(prev => ({
