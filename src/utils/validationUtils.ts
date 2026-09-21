@@ -1,3 +1,5 @@
+import { sha256Sync } from './holidayUtils';
+
 /**
  * Validation Utilities for Chilean RUT, Email, Dates, and Time ranges.
  */
@@ -513,7 +515,16 @@ export function validateTimeRange(
 
 export const REGULAR_LOAN_START_MINUTES = 8 * 60 + 30; // 08:30 (510 minutes)
 export const REGULAR_LOAN_END_MINUTES = 22 * 60; // 22:00 (1320 minutes)
+export const EXTENSION_AUTH_SHA256 = 'f239f9cbb8caf3208b86af88b7fa279271b1a65d4c936ad6312c67044bcac4ed';
 export const EXTENSION_AUTH_KEY = 'ccd2026';
+
+/**
+ * Validates whether an authorization key matches the extended schedule authorization rule via one-way SHA-256 hash.
+ */
+export function verifyExtensionAuthKey(inputKey: string): boolean {
+  if (!inputKey) return false;
+  return sha256Sync(inputKey.trim().toLowerCase()) === EXTENSION_AUTH_SHA256;
+}
 
 export interface LoanScheduleLimitResult {
   isOutsideRegularHours: boolean;

@@ -25,7 +25,7 @@ const HOLIDAY_OVERRIDE_SHA256 = '66dfd0071d636ea2ae067345ef9f1c816baa45f411800f3
 /**
  * Standard synchronous SHA-256 implementation to verify authorization keys without plain text secrets
  */
-function sha256Sync(ascii: string): string {
+export function sha256Sync(ascii: string): string {
   function rightRotate(value: number, amount: number) {
     return (value >>> amount) | (value << (32 - amount));
   }
