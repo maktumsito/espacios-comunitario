@@ -5,6 +5,7 @@ import { SPACES_LIST } from '../data/spacesData';
 import { getChileanHolidayInfo, ChileanHoliday } from '../utils/holidayUtils';
 import { useReservationDateIndex } from '../utils/reservationIndex';
 import { getActiveWindowStartDate } from '../services/reservationService';
+import { getReservationTypeVisual, RESERVATION_TYPE_LEGEND } from '../utils/reservationVisuals';
 import {
   ChevronLeft,
   ChevronRight,
@@ -36,12 +37,13 @@ import { es } from 'date-fns/locale';
 // COLOR CODING & LEGEND DATA
 // ============================================================================
 export const COLOR_LEGEND_ITEMS = [
-  { label: 'Taller Municipal', color: '#2563eb', bg: 'bg-[#dbeafe]', border: 'border-[#bfdbfe]', text: 'text-blue-900' },
-  { label: 'Taller JJV / Vecinal', color: '#d97706', bg: 'bg-[#fef3c7]', border: 'border-[#fde047]', text: 'text-amber-900' },
-  { label: 'Taller CCD / Deportes', color: '#059669', bg: 'bg-[#dcfce7]', border: 'border-[#bbf7d0]', text: 'text-emerald-900' },
-  { label: 'Préstamo / CAM', color: '#0d9488', bg: 'bg-[#d1fae5]', border: 'border-[#a7f3d0]', text: 'text-teal-900' },
-  { label: 'Ensayos / Danza / Cumpleaños', color: '#ea580c', bg: 'bg-[#ffedd5]', border: 'border-[#fed7aa]', text: 'text-orange-900' },
-  { label: 'Otras Actividades', color: '#7c3aed', bg: 'bg-[#ede9fe]', border: 'border-[#ddd6fe]', text: 'text-purple-900' },
+  ...RESERVATION_TYPE_LEGEND.map((item) => ({
+    label: item.label,
+    color: item.accent,
+    bg: item.bgClass,
+    border: item.borderClass,
+    text: item.textClass
+  })),
   { label: 'Topamiento / Conflicto', color: '#e11d48', bg: 'bg-rose-50', border: 'border-rose-400', text: 'text-rose-950' }
 ];
 
@@ -376,7 +378,7 @@ const CalendarDayCell = memo<CalendarDayCellProps>(({
           </div>
         ))}
         {dayReservations.slice(0, Math.max(0, 2 - dayBlocks.slice(0, 1).length)).map((res) => {
-          const color = getSpaceColor(res.espacio);
+          const color = getReservationTypeVisual(res).accent;
           return (
             <CalendarEventTag
               key={res.id}
@@ -417,6 +419,7 @@ const AgendaReservationCard = memo<AgendaReservationCardProps>(({
 
   const isImportant = reservation.importante === 'Sí';
   const isCancelled = reservation.estado === 'cancelada';
+  const typeVisual = getReservationTypeVisual(reservation);
 
   return (
     <button
@@ -429,7 +432,7 @@ const AgendaReservationCard = memo<AgendaReservationCardProps>(({
     >
       <div
         className="absolute top-0 left-0 bottom-0 w-1.5"
-        style={{ backgroundColor: isCancelled ? '#94a3b8' : spaceColor }}
+        style={{ backgroundColor: isCancelled ? '#94a3b8' : typeVisual.accent }}
       />
 
       {/* Top line: Time & Badge */}
@@ -477,6 +480,9 @@ const AgendaReservationCard = memo<AgendaReservationCardProps>(({
         <h4 className={`text-xs font-bold transition truncate ${isCancelled ? 'text-slate-500 line-through' : 'text-slate-900 group-hover:text-blue-700'}`}>
           {reservation.descripcion || reservation.tipoActividad}
         </h4>
+        <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${typeVisual.bgClass} ${typeVisual.softTextClass} border ${typeVisual.borderClass}`}>
+          {typeVisual.label}
+        </span>
       </div>
 
       {/* Space & Responsible */}

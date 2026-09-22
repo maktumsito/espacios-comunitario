@@ -5,6 +5,7 @@ import { normalizeSpaceName } from '../data/spacesData';
 import { formatDateYYYYMMDD, parseDateToNoon } from '../utils/dateUtils';
 import { getFuzzyMatchIds } from '../utils/fuzzySearch';
 import { validateAndFormatChileanPhone } from '../utils/validationUtils';
+import { getReservationTypeVisual, RESERVATION_TYPE_LEGEND } from '../utils/reservationVisuals';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -32,7 +33,8 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
-  ArrowRight
+  ArrowRight,
+  MoreHorizontal
 } from 'lucide-react';
 
 interface MobileAgendaViewProps {
@@ -84,10 +86,11 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
 }) => {
   const [selectedSpaceFilter, setSelectedSpaceFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState<boolean>(false);
   const [onlyImportant, setOnlyImportant] = useState<boolean>(false);
   const [onlyConflicts, setOnlyConflicts] = useState<boolean>(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(null);
 
   const dayStripRef = useRef<HTMLDivElement>(null);
   const selectedDayIso = useMemo(() => formatDateYYYYMMDD(selectedDate), [selectedDate]);
@@ -292,9 +295,9 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
   const isTodayActive = selectedDayIso === formatDateYYYYMMDD(new Date());
 
   return (
-    <div id="mobile-agenda-view-container" className="w-full max-w-lg mx-auto pb-24 text-slate-900 animate-fadeIn">
+    <div id="mobile-agenda-view-container" className="w-full max-w-3xl mx-auto pb-24 text-slate-900 animate-fadeIn">
       {/* 1. TOP MOBILE HEADER & DATE CONTROLS */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-3.5 py-2.5 shadow-2xs">
+      <header className="sticky top-0 z-30 bg-[#f7f9fc]/95 backdrop-blur-md border-b border-slate-200/80 px-3.5 py-2.5">
         <div className="flex items-center justify-between gap-2">
           {/* Day & Date Title */}
           <div className="flex-1 min-w-0">
@@ -308,11 +311,11 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
               </span>
             </div>
             <div className="flex items-center space-x-2 mt-0.5">
-              <h1 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+              <h1 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
                 Agenda Diaria
               </h1>
               {isTodayActive && (
-                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-extrabold animate-pulse">
+                <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-bold">
                   Hoy
                 </span>
               )}
@@ -373,20 +376,16 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
           </div>
         </div>
 
-        {/* Desktop View Switcher Banner for Mobile Users */}
+        {/* Compact desktop matrix shortcut */}
         {onSwitchToDesktopView && (
-          <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-            <div className="flex items-center space-x-1.5 text-slate-500">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span className="font-medium">Vista Móvil Optimizada</span>
-            </div>
+          <div className="mt-1.5 flex items-center justify-end text-xs">
             <button
               type="button"
               onClick={onSwitchToDesktopView}
-              className="text-blue-700 hover:text-blue-900 font-bold flex items-center space-x-1 cursor-pointer py-1 px-2 rounded-lg hover:bg-blue-50 transition"
+              className="text-slate-600 hover:text-blue-700 font-semibold flex items-center space-x-1 cursor-pointer py-1 px-2 rounded-lg hover:bg-white transition"
             >
               <Monitor className="w-3.5 h-3.5" />
-              <span>Ver Matriz de Escritorio</span>
+              <span>Ver matriz</span>
               <ArrowRight className="w-3 h-3" />
             </button>
           </div>
@@ -394,7 +393,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
       </header>
 
       {/* 2. HORIZONTAL DAY STRIP CAROUSEL (Touch swipeable) */}
-      <div className="bg-slate-50 border-b border-slate-200 py-2.5 px-2">
+      <div className="bg-[#f7f9fc] border-b border-slate-200/80 py-2 px-2">
         <div
           ref={dayStripRef}
           className="flex space-x-2 overflow-x-auto scrollbar-none py-1 px-1 touch-pan-x"
@@ -407,22 +406,22 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                 type="button"
                 data-selected={isSel ? 'true' : 'false'}
                 onClick={() => onDateChange(item.date)}
-                className={`min-w-[56px] min-h-[64px] flex flex-col items-center justify-center rounded-2xl p-1.5 transition-all cursor-pointer select-none ${
+                className={`min-w-[54px] min-h-[60px] flex flex-col items-center justify-center rounded-xl p-1.5 transition cursor-pointer select-none border ${
                   isSel
-                    ? 'bg-blue-600 text-white shadow-md scale-105 font-bold'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-300 active:bg-slate-100'
+                    ? 'bg-blue-50 text-blue-800 border-blue-200 font-bold'
+                    : 'bg-white/70 text-slate-700 border-transparent hover:border-slate-200 active:bg-white'
                 }`}
               >
-                <span className={`text-[11px] font-semibold uppercase ${isSel ? 'text-blue-100' : 'text-slate-400'}`}>
+                <span className={`text-[11px] font-semibold uppercase ${isSel ? 'text-blue-600' : 'text-slate-400'}`}>
                   {item.dayName}
                 </span>
-                <span className={`text-base font-black ${isSel ? 'text-white' : 'text-slate-800'}`}>
+                <span className={`text-base font-bold ${isSel ? 'text-blue-900' : 'text-slate-800'}`}>
                   {item.dayNum}
                 </span>
                 {item.count > 0 ? (
                   <span
                     className={`mt-0.5 text-[10px] px-1.5 py-0.2 rounded-full font-bold leading-tight ${
-                      isSel ? 'bg-white/25 text-white' : 'bg-blue-100 text-blue-800'
+                      isSel ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
                     }`}
                   >
                     {item.count}
@@ -437,13 +436,14 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
       </div>
 
       {/* 3. METRIC SUMMARY BAR TODAY */}
-      <div className="px-3.5 py-2.5 bg-white border-b border-slate-100 flex items-center justify-between gap-2 overflow-x-auto scrollbar-none text-xs">
+      <div className="px-3.5 py-2 bg-white border-b border-slate-100 flex items-center justify-between gap-2 overflow-x-auto scrollbar-none text-xs">
         <div className="flex items-center space-x-2 shrink-0">
-          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-slate-100 text-slate-700 font-semibold">
+          <div className="flex items-center space-x-1.5 text-slate-600 font-medium">
             <CalendarIcon className="w-3.5 h-3.5 text-blue-600" />
             <span>{dayReservations.length} {dayReservations.length === 1 ? 'actividad' : 'actividades'}</span>
           </div>
-          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-slate-100 text-slate-700 font-semibold">
+          <span className="text-slate-300">•</span>
+          <div className="flex items-center space-x-1.5 text-slate-600 font-medium">
             <MapPin className="w-3.5 h-3.5 text-emerald-600" />
             <span>{spacesWithBookingsToday.size} {spacesWithBookingsToday.size === 1 ? 'espacio' : 'espacios'}</span>
           </div>
@@ -454,7 +454,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
             <button
               type="button"
               onClick={() => setOnlyConflicts(!onlyConflicts)}
-              className={`min-h-[36px] flex items-center space-x-1 px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+              className={`min-h-[36px] flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
                 onlyConflicts
                   ? 'bg-rose-600 text-white shadow-xs'
                   : 'bg-rose-50 text-rose-800 border border-rose-200'
@@ -466,7 +466,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
           )}
 
           {activeSpaceBlocksToday.length > 0 && (
-            <div className="flex items-center space-x-1 px-2 py-1 rounded-xl bg-amber-100 text-amber-900 font-bold text-[11px]">
+            <div className="flex items-center space-x-1 px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-semibold text-[11px]">
               <Wrench className="w-3.5 h-3.5 text-amber-700" />
               <span>{activeSpaceBlocksToday.length} mantención</span>
             </div>
@@ -486,7 +486,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar por solicitante, taller o RUT..."
-              className="w-full pl-9 pr-8 py-2 text-xs rounded-xl bg-slate-100 border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              className="w-full min-h-[44px] pl-9 pr-8 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 font-medium"
             />
             {searchQuery && (
               <button
@@ -501,28 +501,61 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
 
           <button
             type="button"
-            id="mobile-filter-important-toggle"
-            onClick={() => setOnlyImportant(!onlyImportant)}
-            aria-label="Filtrar solo importantes"
-            className={`min-w-[44px] min-h-[44px] p-2 rounded-xl flex items-center justify-center transition cursor-pointer ${
-              onlyImportant
-                ? 'bg-amber-500 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
+            id="mobile-filter-panel-toggle"
+            onClick={() => setIsFilterPanelOpen((open) => !open)}
+            aria-expanded={isFilterPanelOpen}
+            className={`min-w-[44px] min-h-[44px] px-3 rounded-xl flex items-center justify-center gap-1.5 border transition cursor-pointer ${
+              isFilterPanelOpen || selectedSpaceFilter !== 'ALL' || onlyImportant || onlyConflicts
+                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
             }`}
-            title="Ver solo actividades importantes"
+            title="Mostrar filtros"
           >
-            <Star className={`w-4 h-4 ${onlyImportant ? 'fill-white' : ''}`} />
+            <SlidersHorizontal className="w-4 h-4" />
+            <span className="hidden sm:inline text-xs font-semibold">Filtros</span>
           </button>
         </div>
 
         {/* Space Horizontal Filter Carousel */}
-        <div className="flex space-x-1.5 overflow-x-auto scrollbar-none py-1">
+        {isFilterPanelOpen && (
+        <div className="space-y-2 pt-1 animate-fadeIn">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
+            <button
+              type="button"
+              id="mobile-filter-important-toggle"
+              onClick={() => setOnlyImportant(!onlyImportant)}
+              aria-label="Filtrar solo importantes"
+              className={`min-h-[40px] px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                onlyImportant
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                  : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
+              }`}
+            >
+              <Star className={`w-3.5 h-3.5 ${onlyImportant ? 'fill-amber-500 text-amber-600' : ''}`} />
+              <span>Importantes</span>
+            </button>
+            {conflictsTodayCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setOnlyConflicts(!onlyConflicts)}
+                className={`min-h-[40px] px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                  onlyConflicts
+                    ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                    : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>Topamientos</span>
+              </button>
+            )}
+          </div>
+          <div className="flex space-x-1.5 overflow-x-auto scrollbar-none py-1">
           <button
             type="button"
             onClick={() => setSelectedSpaceFilter('ALL')}
             className={`min-h-[40px] px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center space-x-1.5 ${
               selectedSpaceFilter === 'ALL'
-                ? 'bg-slate-900 text-white shadow-xs'
+                ? 'bg-slate-800 text-white'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
@@ -542,7 +575,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                 onClick={() => setSelectedSpaceFilter(isSelected ? 'ALL' : canon)}
                 className={`min-h-[40px] px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center space-x-1.5 ${
                   isSelected
-                    ? 'bg-blue-600 text-white shadow-xs font-bold'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200 font-bold'
                     : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
                 }`}
               >
@@ -554,7 +587,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                 {countInSpace > 0 && (
                   <span
                     className={`text-[10px] font-bold px-1.5 rounded-full ${
-                      isSelected ? 'bg-white/30 text-white' : 'bg-slate-100 text-slate-700'
+                      isSelected ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'
                     }`}
                   >
                     {countInSpace}
@@ -563,7 +596,17 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
               </button>
             );
           })}
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-1" aria-label="Colores por tipo de reserva">
+            {RESERVATION_TYPE_LEGEND.map((item) => (
+              <span key={item.key} className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-1 text-[10px] font-semibold ${item.bgClass} ${item.borderClass} ${item.softTextClass}`}>
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.accent }} />
+                {item.label}
+              </span>
+            ))}
+          </div>
         </div>
+        )}
       </div>
 
       {/* 5. SPACE MAINTENANCE WARNING BANNER (IF ANY) */}
@@ -630,32 +673,34 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
             const phoneInfo = validateAndFormatChileanPhone(res.telefonoContacto);
             const existingRating = ratingByReservationId.get(res.id);
             const isRealizada = res.realizada === 'Sí';
+            const typeVisual = getReservationTypeVisual(res);
+            const isActionMenuOpen = activeActionMenuId === res.id;
 
             return (
               <article
                 key={res.id}
                 id={`mobile-reservation-card-${res.id}`}
                 onClick={() => onSelectReservation(res)}
-                className={`relative bg-white rounded-2xl border transition-all shadow-2xs overflow-hidden cursor-pointer ${
+                className={`relative bg-white rounded-2xl border transition-all overflow-hidden cursor-pointer ${
                   isConflict
                     ? 'border-rose-300 ring-2 ring-rose-200/60 bg-rose-50/20'
                     : liveState?.status === 'live'
-                    ? 'border-blue-300 ring-2 ring-blue-100 shadow-md'
+                    ? 'border-blue-300 ring-2 ring-blue-100'
                     : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
-                {/* Visual Space Color Stripe on left */}
+                {/* Visual reservation-type stripe on left */}
                 <div
-                  className="absolute left-0 top-0 bottom-0 w-2"
-                  style={{ backgroundColor: spaceColor }}
+                  className="absolute left-0 top-0 bottom-0 w-1.5"
+                  style={{ backgroundColor: isConflict ? '#e11d48' : typeVisual.accent }}
                 />
 
                 <div className="pl-4 pr-3.5 pt-3 pb-3 space-y-2.5">
                   {/* Card Header: Time slot + Status */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center space-x-2">
-                      <div className="flex items-center space-x-1.5 bg-slate-100 px-2.5 py-1 rounded-lg text-slate-900 font-black text-xs font-mono">
-                        <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg text-slate-800 font-bold text-xs font-mono">
+                        <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                         <span>{res.horaInicio} - {res.horaFin}</span>
                       </div>
                       {res.terminaDiaSiguiente && (
@@ -667,7 +712,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
 
                     <div className="flex items-center space-x-1.5">
                       {liveState?.status === 'live' && (
-                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold animate-pulse">
+                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
                           <span>EN CURSO</span>
                         </span>
@@ -692,13 +737,13 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                   <div>
                     <div className="flex items-center space-x-2 mb-1">
                       <span
-                        className="text-[11px] font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider text-white"
-                        style={{ backgroundColor: spaceColor }}
+                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeVisual.bgClass} ${typeVisual.borderClass} ${typeVisual.softTextClass}`}
                       >
-                        {res.espacio}
+                        {typeVisual.label}
                       </span>
-                      <span className="text-[11px] font-semibold text-slate-500">
-                        {res.tipoActividad}
+                      <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1 min-w-0">
+                        <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: spaceColor }} />
+                        <span className="truncate">{res.espacio}</span>
                       </span>
                     </div>
 
@@ -858,7 +903,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                     </div>
                   )}
 
-                  {/* TOUCH-FRIENDLY ACTION BUTTONS (WCAG compliant 44px+ min touch target) */}
+                  {/* Primary state and compact overflow actions */}
                   <div
                     className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1"
                     onClick={(e) => e.stopPropagation()}
@@ -870,13 +915,13 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                         onClick={() => onToggleRealizada(res)}
                         className={`min-h-[44px] px-3 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition cursor-pointer ${
                           isRealizada
-                            ? 'bg-emerald-600 text-white shadow-2xs'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
                         }`}
                         title={isRealizada ? 'Marcar como pendiente' : 'Marcar como realizada'}
                       >
                         {isRealizada ? (
-                          <CheckCircle2 className="w-4 h-4 text-white" />
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         ) : (
                           <Circle className="w-4 h-4 text-slate-400" />
                         )}
@@ -884,20 +929,35 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                       </button>
                     ) : <div />}
 
-                    {/* Right: Actions (Ver detalle, Editar, Calificar, Copiar, Eliminar) */}
-                    <div className="flex items-center space-x-1">
+                    <button
+                      type="button"
+                      onClick={() => setActiveActionMenuId(isActionMenuOpen ? null : res.id)}
+                      aria-expanded={isActionMenuOpen}
+                      aria-label="Mostrar acciones de la reserva"
+                      className="min-h-[44px] min-w-[44px] rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 flex items-center justify-center transition cursor-pointer"
+                    >
+                      <MoreHorizontal className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {isActionMenuOpen && (
+                    <div
+                      className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 rounded-xl border border-slate-200 bg-slate-50 p-2 animate-fadeIn"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {onOpenRating && (
                         <button
                           type="button"
                           onClick={() => onOpenRating(res, existingRating)}
-                          className={`min-h-[44px] min-w-[44px] p-2.5 rounded-xl flex items-center justify-center transition cursor-pointer ${
+                          className={`min-h-[44px] px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
                             existingRating
                               ? 'bg-amber-100 text-amber-800'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
                           }`}
                           title={existingRating ? 'Ver/editar calificación de auxiliar' : 'Calificar espacio (Auxiliares)'}
                         >
                           <Star className={`w-4 h-4 ${existingRating ? 'fill-amber-500 text-amber-600' : 'text-slate-600'}`} />
+                          <span>Calificar</span>
                         </button>
                       )}
 
@@ -905,10 +965,11 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                         type="button"
                         onClick={() => onEditReservation(res)}
                         aria-label="Editar reserva"
-                        className="min-h-[44px] min-w-[44px] p-2.5 rounded-xl bg-slate-100 text-blue-700 hover:bg-blue-50 flex items-center justify-center transition cursor-pointer"
+                        className="min-h-[44px] px-3 py-2 rounded-lg bg-white border border-slate-200 text-blue-700 hover:bg-blue-50 flex items-center justify-center gap-1.5 text-xs font-semibold transition cursor-pointer"
                         title="Editar reserva"
                       >
                         <Edit2 className="w-4 h-4" />
+                        <span>Editar</span>
                       </button>
 
                       {onDuplicateReservation && (
@@ -916,10 +977,11 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                           type="button"
                           onClick={() => onDuplicateReservation(res)}
                           aria-label="Duplicar reserva"
-                          className="min-h-[44px] min-w-[44px] p-2.5 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center justify-center transition cursor-pointer"
+                          className="min-h-[44px] px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 flex items-center justify-center gap-1.5 text-xs font-semibold transition cursor-pointer"
                           title="Duplicar reserva"
                         >
                           <Copy className="w-4 h-4" />
+                          <span>Duplicar</span>
                         </button>
                       )}
 
@@ -934,14 +996,15 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                             }
                           }}
                           aria-label="Eliminar reserva"
-                          className="min-h-[44px] min-w-[44px] p-2.5 rounded-xl bg-slate-100 text-rose-600 hover:bg-rose-50 flex items-center justify-center transition cursor-pointer"
+                          className="min-h-[44px] px-3 py-2 rounded-lg bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 flex items-center justify-center gap-1.5 text-xs font-semibold transition cursor-pointer"
                           title="Eliminar reserva"
                         >
                           <Trash2 className="w-4 h-4" />
+                          <span>Eliminar</span>
                         </button>
                       )}
                     </div>
-                  </div>
+                  )}
                 </div>
               </article>
             );
@@ -957,10 +1020,9 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
             id="btn-mobile-fab-new-reservation"
             onClick={() => onNewReservationForDate(selectedDayIso, selectedSpaceFilter !== 'ALL' ? selectedSpaceFilter : undefined)}
             aria-label="Crear nueva reserva"
-            className="min-h-[56px] min-w-[56px] px-5 py-3 rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm shadow-xl hover:shadow-2xl active:scale-95 transition-all flex items-center space-x-2 cursor-pointer ring-4 ring-white"
+            className="h-14 w-14 rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-lg active:scale-95 transition flex items-center justify-center cursor-pointer ring-4 ring-white/80"
           >
             <Plus className="w-6 h-6 stroke-[2.5]" />
-            <span className="pr-1 tracking-wide">Nueva Reserva</span>
           </button>
         </div>
       )}

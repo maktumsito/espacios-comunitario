@@ -36,6 +36,7 @@ import { es } from 'date-fns/locale';
 import { validateStrictCalendarDate, clampAndFixCalendarDate } from '../utils/validationUtils';
 import { useReservationDateIndex } from '../utils/reservationIndex';
 import { formatActivitiesCount } from '../utils/pluralUtils';
+import { getReservationTypeVisual, RESERVATION_TYPE_LEGEND } from '../utils/reservationVisuals';
 
 const PrintScheduleModal = React.lazy(() =>
   import('./PrintScheduleModal').then((m) => ({ default: m.PrintScheduleModal }))
@@ -407,7 +408,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
     return getConflictReservationIds(dayReservations);
   }, [conflictReservationIds, dayReservations]);
 
-  // Function to determine pastel styling corresponding to screenshot activity types
+  // Shared reservation-type palette used across agenda, calendar and matrix views.
   const getCardStyle = (res: Reservation, isConflict: boolean) => {
     if (isConflict) {
       return {
@@ -419,71 +420,13 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
       };
     }
 
-    const tipo = (res.tipoActividad || '').toUpperCase();
-    const desc = (res.descripcion || '').toUpperCase();
-
-    // 1. TALLER MUNICIPAL -> Soft Periwinkle Blue
-    if (tipo.includes('MUNICIPAL') || desc.includes('MUNICIPAL')) {
-      return {
-        bg: 'bg-[#dbeafe]', // soft light blue
-        border: 'border-[#bfdbfe]',
-        shadow: 'shadow-[0_3px_0_rgba(147,197,253,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
-        text: 'text-[#1e293b]',
-        accent: '#2563eb'
-      };
-    }
-
-    // 2. TALLER JJV -> Soft Butter Yellow / Warm Gold
-    if (tipo.includes('JJV') || desc.includes('JJV') || tipo.includes('VECINAL')) {
-      return {
-        bg: 'bg-[#fef3c7]', // soft yellow
-        border: 'border-[#fde047]',
-        shadow: 'shadow-[0_3px_0_rgba(253,224,71,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
-        text: 'text-[#1e293b]',
-        accent: '#d97706'
-      };
-    }
-
-    // 3. TALLER CCD / DEPORTES -> Soft Mint Green
-    if (tipo.includes('CCD') || desc.includes('CCD') || desc.includes('YOGA') || desc.includes('PILATES') || desc.includes('ZUMBA')) {
-      return {
-        bg: 'bg-[#dcfce7]', // soft mint
-        border: 'border-[#bbf7d0]',
-        shadow: 'shadow-[0_3px_0_rgba(167,243,208,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
-        text: 'text-[#1e293b]',
-        accent: '#059669'
-      };
-    }
-
-    // 4. PRÉSTAMO / CAM -> Soft Seafoam Aqua
-    if (tipo.includes('PRÉSTAMO') || tipo.includes('PRESTAMO') || desc.includes('CAM') || tipo.includes('CAM')) {
-      return {
-        bg: 'bg-[#d1fae5]', // soft aqua-emerald
-        border: 'border-[#a7f3d0]',
-        shadow: 'shadow-[0_3px_0_rgba(167,243,208,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
-        text: 'text-[#1e293b]',
-        accent: '#0d9488'
-      };
-    }
-
-    // 5. ENSAYO / BAILE / CUMPLEAÑOS -> Soft Peach / Warm Apricot
-    if (tipo.includes('ENSAYO') || desc.includes('BAILE') || tipo.includes('CUMPLEAÑOS') || desc.includes('DANZA')) {
-      return {
-        bg: 'bg-[#ffedd5]', // soft peach
-        border: 'border-[#fed7aa]',
-        shadow: 'shadow-[0_3px_0_rgba(253,186,116,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
-        text: 'text-[#1e293b]',
-        accent: '#ea580c'
-      };
-    }
-
-    // Default: Soft Lavender / Slate
+    const visual = getReservationTypeVisual(res);
     return {
-      bg: 'bg-[#ede9fe]',
-      border: 'border-[#ddd6fe]',
-      shadow: 'shadow-[0_3px_0_rgba(196,181,253,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
-      text: 'text-[#1e293b]',
-      accent: '#7c3aed'
+      bg: visual.bgClass,
+      border: visual.borderClass,
+      shadow: 'shadow-xs',
+      text: 'text-slate-900',
+      accent: visual.accent
     };
   };
 
@@ -868,10 +811,10 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
       )}
 
       {/* 1. TOP HEADER TOOLBAR (Sticky / Frozen) */}
-      <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl px-4 sm:px-5 lg:px-6 py-3 shadow-sm flex flex-col md:flex-row lg:items-center justify-between gap-3">
+      <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl px-3 sm:px-4 py-2.5 shadow-xs flex flex-col md:flex-row lg:items-center justify-between gap-3">
         {/* Left Side: Date pill card with green "HOY" badge */}
         <div className="flex items-center space-x-3 flex-wrap gap-y-2">
-          <div className="flex items-center space-x-2.5 px-3.5 py-1.5 min-h-[44px] bg-slate-50 border border-slate-200 rounded-xl shadow-2xs">
+          <div className="flex items-center space-x-2.5 px-3 py-1.5 min-h-[44px] bg-slate-50 border border-slate-200 rounded-xl">
             <span className="text-sm md:text-base font-bold text-slate-800 capitalize">
               {format(selectedDate, "EEEE, dd-MM-yyyy", { locale: es })}
             </span>
@@ -928,7 +871,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
               id="btn-schedule-today"
               aria-label="Ir a la fecha de hoy"
               onClick={handleToday}
-              className="px-3.5 py-2 min-h-[44px] min-w-[44px] rounded-lg text-xs font-bold bg-[#64748b] hover:bg-[#475569] text-white shadow-2xs transition cursor-pointer flex items-center justify-center"
+              className="px-3.5 py-2 min-h-[44px] min-w-[44px] rounded-lg text-xs font-bold bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 transition cursor-pointer flex items-center justify-center"
             >
               Hoy
             </button>
@@ -1132,11 +1075,21 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
         </div>
       )}
 
+      <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5" aria-label="Colores por tipo de reserva">
+        <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap mr-1">Tipos:</span>
+        {RESERVATION_TYPE_LEGEND.map((item) => (
+          <span key={item.key} className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-1 text-[10px] font-semibold ${item.bgClass} ${item.borderClass} ${item.softTextClass}`}>
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.accent }} />
+            {item.label}
+          </span>
+        ))}
+      </div>
+
       {/* 1.1 AVISO ACTIVIDADES IMPORTANTES (Desde 3 días antes) */}
       {upcomingImportant3Days.length > 0 && (
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-3 sm:px-4 sm:py-3 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center space-x-2.5">
-            <span className="p-1.5 rounded-lg bg-amber-200 text-amber-900 font-extrabold flex items-center space-x-1 shadow-2xs">
+            <span className="p-1.5 rounded-lg bg-amber-100 text-amber-800 font-bold flex items-center space-x-1">
               <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-700" />
             </span>
             <div>

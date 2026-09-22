@@ -121,9 +121,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   }, []);
 
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 text-slate-900 shadow-xs">
+    <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 text-slate-900">
       <div className="w-full max-w-[1680px] mx-auto px-2 sm:px-4 lg:px-6">
-        <div className="flex items-center justify-between h-16 gap-1.5 sm:gap-3">
+        <div className="flex items-center justify-between h-14 gap-1.5 sm:gap-3">
           {/* Logo & Brand Identity */}
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 shrink">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-xs shrink-0">
@@ -155,7 +155,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold"
                   title={`Conectado en tiempo real.${lastSyncTime ? ` Sincronizado: ${lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`}
                 >
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
                   <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   <span className="hidden 2xl:inline">En Línea</span>
                   {lastSyncTime && (
@@ -290,7 +290,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="btn-new-reservation"
               onClick={onNewReservation}
-              className="min-h-[40px] sm:min-h-[44px] flex items-center space-x-1.5 sm:space-x-2 px-2.5 sm:px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition active:scale-95 cursor-pointer shrink-0"
+              className="min-h-[40px] flex items-center space-x-1.5 sm:space-x-2 px-2.5 sm:px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition active:scale-95 cursor-pointer shrink-0"
             >
               <Plus className="w-4 h-4 shrink-0 stroke-[2.5]" />
               <span className="hidden sm:inline">Nueva Reserva</span>
@@ -307,7 +307,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] relative p-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 hover:text-blue-600 shadow-xs transition cursor-pointer flex items-center justify-center"
               >
                 {unreadNotificationsCount > 0 ? (
-                  <BellRing className="w-4 h-4 text-blue-600 animate-pulse" />
+                  <BellRing className="w-4 h-4 text-blue-600" />
                 ) : (
                   <Bell className="w-4 h-4" />
                 )}
