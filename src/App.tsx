@@ -1804,20 +1804,20 @@ export default function App() {
 
       {/* Subtle indicator banner when filters are active but panel is kept hidden */}
       {currentView !== 'admin' && !isFilterBarOpen && hasActiveFilters && !(filters.fechaDesde && filters.fechaHasta && filters.fechaDesde > filters.fechaHasta) && (
-        <div className="bg-blue-50/95 border-b border-blue-200 px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 animate-fadeIn shadow-2xs">
-          <div className="flex items-center space-x-2 text-blue-900 font-medium">
+        <div className="bg-blue-50/80 border-b border-blue-200/60 px-4 py-1.5 text-xs flex flex-wrap items-center justify-between gap-2 animate-fadeIn">
+          <div className="flex items-center space-x-2 text-blue-900 font-medium text-[11.5px]">
             <Filter className="w-3.5 h-3.5 text-blue-600 shrink-0" />
             <span>
               Filtros activos aplicados ({filteredReservations.length} de {reservations.length} reservas)
             </span>
           </div>
-          <div className="flex items-center space-x-2.5">
+          <div className="flex items-center space-x-2 text-[11px]">
             <button
               type="button"
               onClick={() => setIsFilterBarOpen(true)}
-              className="text-blue-700 hover:text-blue-900 font-bold underline cursor-pointer text-xs"
+              className="text-blue-700 hover:text-blue-900 font-semibold underline cursor-pointer"
             >
-              Abrir panel de filtros
+              Abrir filtros
             </button>
             <span className="text-blue-300">|</span>
             <button
@@ -1834,9 +1834,9 @@ export default function App() {
                   soloConTopamiento: false
                 })
               }
-              className="text-rose-600 hover:text-rose-800 font-bold cursor-pointer text-xs"
+              className="text-slate-500 hover:text-rose-600 font-medium cursor-pointer"
             >
-              Limpiar filtros
+              Limpiar
             </button>
           </div>
         </div>
@@ -1855,22 +1855,22 @@ export default function App() {
         {activeDraft && !isReservationModalOpen && (
           <div
             id="app-active-draft-banner"
-            className="mb-3 p-2.5 sm:p-3 rounded-2xl bg-amber-50 border-2 border-amber-300 shadow-xs flex flex-wrap items-center justify-between gap-2 animate-fadeIn"
+            className="mb-2.5 p-2 sm:px-3 sm:py-2 rounded-xl bg-amber-50/70 border border-amber-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-2 animate-fadeIn"
           >
-            <div className="flex items-center space-x-2.5">
-              <div className="p-2 rounded-xl bg-amber-200 text-amber-900 shrink-0">
-                <RotateCcw className="w-4 h-4 text-amber-800" />
+            <div className="flex items-center space-x-2">
+              <div className="p-1 rounded-lg bg-amber-100 text-amber-800 shrink-0">
+                <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
               </div>
               <div className="text-xs text-amber-950">
-                <span className="font-bold">
-                  Borrador de reserva no guardado ({activeDraft.timeAgo}):
+                <span className="font-semibold text-amber-900">
+                  Borrador en curso ({activeDraft.timeAgo}):
                 </span>
-                <span className="text-amber-900 ml-1">
-                  Tenías una reserva en progreso ({activeDraft.summaryLabel}). ¿Deseas reanudar tu edición?
+                <span className="text-amber-800/90 ml-1">
+                  Tenías una reserva en progreso ({activeDraft.summaryLabel}).
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 id="btn-app-resume-draft"
@@ -1886,10 +1886,10 @@ export default function App() {
                   }
                   openCreateModal();
                 }}
-                className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold transition shadow-xs flex items-center space-x-1.5 cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-semibold transition shadow-2xs flex items-center space-x-1 cursor-pointer"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Continuar editando</span>
+                <RotateCcw className="w-3 h-3" />
+                <span>Reanudar</span>
               </button>
               <button
                 type="button"
@@ -1898,7 +1898,7 @@ export default function App() {
                   removeStoredDraft(activeDraft.key);
                   setActiveDraft(null);
                 }}
-                className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-amber-800 hover:text-amber-950 hover:bg-amber-100 transition cursor-pointer"
+                className="px-2 py-1 rounded-lg text-xs font-medium text-amber-800 hover:text-amber-950 hover:bg-amber-100/60 transition cursor-pointer"
               >
                 Descartar
               </button>
@@ -1908,31 +1908,28 @@ export default function App() {
 
         {/* Banner de Solicitudes de Eliminación en Espera (Para Administradores y Coordinadores) */}
         {isCoordinatorOrAdmin(currentUser) && pendingReservations.length > 0 && currentView !== 'admin' && (
-          <div className="mb-3 p-2.5 sm:p-3 rounded-2xl bg-amber-50 border-2 border-amber-300 shadow-xs flex flex-wrap items-center justify-between gap-2 animate-fadeIn">
-            <div className="flex items-center space-x-2.5">
-              <div className="p-2 rounded-xl bg-amber-200 text-amber-900 shrink-0">
-                <Clock className="w-4 h-4 text-amber-800" />
+          <div className="mb-2.5 p-2 sm:px-3 sm:py-2 rounded-xl bg-amber-50/70 border border-amber-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-2 animate-fadeIn">
+            <div className="flex items-center space-x-2">
+              <div className="p-1 rounded-lg bg-amber-100 text-amber-800 shrink-0">
+                <Clock className="w-3.5 h-3.5 text-amber-700" />
               </div>
               <div className="text-xs text-amber-950">
-                <span className="font-bold">
+                <span className="font-semibold text-amber-900">
                   {pendingReservations.length === 1
-                    ? 'Hay 1 solicitud de eliminación de reserva en espera de autorización.'
-                    : `Hay ${pendingReservations.length} solicitudes de eliminación de reservas en espera de autorización.`}
+                    ? '1 solicitud de eliminación de reserva pendiente de autorización.'
+                    : `${pendingReservations.length} solicitudes de eliminación pendientes de autorización.`}
                 </span>
-                <span className="hidden sm:inline text-amber-900 ml-1">
-                  Requiere revisión y aprobación de un Administrador o Coordinador.
+                <span className="hidden sm:inline text-amber-800/90 ml-1">
+                  Requiere revisión de un Administrador o Coordinador.
                 </span>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setIsPendingDeletionsModalOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-xs font-bold transition shadow-xs flex items-center space-x-1.5 cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-xs font-semibold transition shadow-2xs flex items-center space-x-1 cursor-pointer"
             >
-              <span>Revisar Solicitudes</span>
-              <span className="bg-white text-amber-900 text-[10px] font-black px-1.5 py-0.2 rounded-full">
-                {pendingReservations.length}
-              </span>
+              <span>Revisar ({pendingReservations.length})</span>
             </button>
           </div>
         )}
