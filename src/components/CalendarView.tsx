@@ -36,28 +36,28 @@ import { es } from 'date-fns/locale';
 // COLOR CODING & LEGEND DATA
 // ============================================================================
 export const COLOR_LEGEND_ITEMS = [
-  { label: 'Taller Municipal', color: '#3b82f6', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900' },
-  { label: 'Taller JJV / Vecinal', color: '#f59e0b', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-900' },
-  { label: 'Taller CCD / Deportes', color: '#10b981', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-900' },
-  { label: 'Préstamo / CAM', color: '#06b6d4', bg: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-900' },
-  { label: 'Ensayos / Danza / Cumpleaños', color: '#f97316', bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-900' },
-  { label: 'Otras Actividades', color: '#8b5cf6', bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-900' },
-  { label: 'Topamiento / Conflicto', color: '#f43f5e', bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-950' }
+  { label: 'Taller Municipal', color: '#2563eb', bg: 'bg-[#dbeafe]', border: 'border-[#bfdbfe]', text: 'text-blue-900' },
+  { label: 'Taller JJV / Vecinal', color: '#d97706', bg: 'bg-[#fef3c7]', border: 'border-[#fde047]', text: 'text-amber-900' },
+  { label: 'Taller CCD / Deportes', color: '#059669', bg: 'bg-[#dcfce7]', border: 'border-[#bbf7d0]', text: 'text-emerald-900' },
+  { label: 'Préstamo / CAM', color: '#0d9488', bg: 'bg-[#d1fae5]', border: 'border-[#a7f3d0]', text: 'text-teal-900' },
+  { label: 'Ensayos / Danza / Cumpleaños', color: '#ea580c', bg: 'bg-[#ffedd5]', border: 'border-[#fed7aa]', text: 'text-orange-900' },
+  { label: 'Otras Actividades', color: '#7c3aed', bg: 'bg-[#ede9fe]', border: 'border-[#ddd6fe]', text: 'text-purple-900' },
+  { label: 'Topamiento / Conflicto', color: '#e11d48', bg: 'bg-rose-50', border: 'border-rose-400', text: 'text-rose-950' }
 ];
 
 export const ColorLegendBar: React.FC = () => {
   return (
-    <div className="bg-white/80 border border-slate-200/80 rounded-xl px-3 py-1.5 shadow-2xs backdrop-blur-xs">
-      <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
-        <div className="flex items-center space-x-1.5 text-slate-400 font-semibold shrink-0 text-[11px]">
-          <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-          <span>Categorías:</span>
+    <div className="bg-white border border-slate-200 rounded-xl p-1.5 sm:p-2 shadow-2xs">
+      <div className="flex items-center justify-between flex-wrap gap-1.5 text-xs">
+        <div className="flex items-center space-x-1.5 text-slate-500 font-bold shrink-0">
+          <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+          <span>Código de Colores:</span>
         </div>
-        <div className="flex items-center flex-wrap gap-2">
+        <div className="flex items-center flex-wrap gap-1.5">
           {COLOR_LEGEND_ITEMS.map((item) => (
             <div
               key={item.label}
-              className="flex items-center space-x-1.5 text-[11px] font-medium text-slate-600"
+              className={`flex items-center space-x-1 px-2 py-0.5 rounded-md border text-[10.5px] font-semibold ${item.bg} ${item.border} ${item.text}`}
             >
               <span
                 className="w-2 h-2 rounded-full shrink-0"
@@ -202,24 +202,19 @@ const CalendarEventTag = memo<CalendarEventTagProps>(({
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
       aria-label={`Actividad: ${reservation.descripcion || reservation.tipoActividad} a las ${reservation.horaInicio} en ${reservation.espacio}`}
-      className={`w-full text-left relative text-[10px] px-1.5 py-0.5 rounded-md truncate font-medium flex items-center space-x-1.5 transition hover:opacity-95 hover:scale-[1.01] cursor-pointer border ${
+      className={`w-full text-left relative text-[10px] px-1.5 py-0.5 rounded truncate font-medium text-white flex items-center space-x-1 shadow-xs transition hover:opacity-90 hover:scale-[1.02] cursor-pointer border-0 ${
         isCancelled ? 'opacity-50 line-through grayscale-[50%]' : ''
       }`}
-      style={{
-        backgroundColor: isCancelled ? '#f1f5f9' : '#ffffff',
-        borderColor: isCancelled ? '#cbd5e1' : '#e2e8f0',
-        color: isCancelled ? '#94a3b8' : '#1e293b'
-      }}
+      style={{ backgroundColor: isCancelled ? '#64748b' : color }}
     >
-      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: isCancelled ? '#94a3b8' : color }} />
-      <span className="font-mono text-[9px] font-semibold text-slate-500 shrink-0">{reservation.horaInicio}</span>
+      <span className="font-mono text-[9px] opacity-90 shrink-0">{reservation.horaInicio}</span>
       {isCancelled && (
-        <span className="shrink-0 text-[9px] font-bold text-rose-500" title="Reserva Cancelada">🚫</span>
+        <span className="shrink-0 text-[9px] font-bold text-rose-200" title="Reserva Cancelada">🚫</span>
       )}
       {reservation.solicitudEliminacion && !isCancelled && (
         <span className="shrink-0 text-[9px]" title="Solicitud de eliminación en espera">⏳</span>
       )}
-      <span className="truncate font-medium">{reservation.descripcion || reservation.tipoActividad}</span>
+      <span className="truncate">{reservation.descripcion || reservation.tipoActividad}</span>
 
       {/* Floating Detailed Hover Tooltip */}
       {showTooltip && (
@@ -428,19 +423,19 @@ const AgendaReservationCard = memo<AgendaReservationCardProps>(({
       type="button"
       onClick={handleClick}
       aria-label={`Ver detalles de reserva: ${reservation.descripcion || reservation.tipoActividad}, ${reservation.horaInicio} a ${reservation.horaFin} en ${reservation.espacio}, solicitante ${reservation.responsable}`}
-      className={`w-full text-left bg-white hover:bg-slate-50/80 border border-slate-200/80 hover:border-slate-300 rounded-xl p-3 space-y-1.5 transition-all shadow-2xs hover:shadow-xs cursor-pointer relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-blue-500 focus:z-10 ${
+      className={`w-full text-left bg-slate-50 hover:bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-3 space-y-2 transition-all shadow-xs cursor-pointer relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-blue-500 focus:z-10 ${
         isCancelled ? 'opacity-60 bg-slate-100/80' : ''
       }`}
     >
       <div
-        className="absolute top-2 left-1.5 bottom-2 w-1 rounded-full"
+        className="absolute top-0 left-0 bottom-0 w-1.5"
         style={{ backgroundColor: isCancelled ? '#94a3b8' : spaceColor }}
       />
 
       {/* Top line: Time & Badge */}
-      <div className="flex items-center justify-between pl-2">
-        <div className={`flex items-center space-x-1 text-xs font-mono font-semibold ${isCancelled ? 'text-slate-500 line-through' : 'text-slate-700'}`}>
-          <Clock className="w-3 h-3 text-slate-400" />
+      <div className="flex items-center justify-between pl-1">
+        <div className={`flex items-center space-x-1 text-xs font-mono font-bold ${isCancelled ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+          <Clock className="w-3 h-3 text-blue-600" />
           <span>{reservation.horaInicio} - {reservation.horaFin}</span>
         </div>
 

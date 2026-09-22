@@ -64,29 +64,6 @@ interface DailyUsageViewProps {
   onDateChange?: (date: Date) => void;
 }
 
-// Format space display name into elegant Sentence Case
-export const formatSpaceDisplayName = (name: string): string => {
-  if (!name) return '';
-  const specialNames: Record<string, string> = {
-    'AUDITORIO': 'Auditorio',
-    'GIMNASIO': 'Gimnasio',
-    'SALA DE ESPEJOS': 'Sala de Espejos',
-    'TATAMI': 'Tatami',
-    'SALA 2': 'Sala 2',
-    'SALA 3': 'Sala 3',
-    'SALA 4': 'Sala 4',
-    'SALA 5': 'Sala 5',
-    'SALA 6': 'Sala 6',
-    'BIBLIOTECA': 'Biblioteca',
-    'PATIO EXTERIOR': 'Patio Exterior',
-    'COCINA': 'Cocina',
-    'MULTICANCHA': 'Multicancha',
-    'BOX 1': 'Box 1'
-  };
-  const upper = name.trim().toUpperCase();
-  return specialNames[upper] || (name.charAt(0).toUpperCase() + name.slice(1).toLowerCase());
-};
-
 // Ordered space list matching the user's required layout exactly:
 // Auditorio, Gimnasio, Sala Espejos, Tatami, Sala 2, Sala 3, Sala 4, Sala 5, Sala 6, Biblioteca, Patio Exterior
 const ORDERED_SPACES: string[] = [
@@ -430,90 +407,83 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
     return getConflictReservationIds(dayReservations);
   }, [conflictReservationIds, dayReservations]);
 
-  // Redesigned styling: Clean white background, soft ambient shadow, rounded left accent strip
+  // Function to determine pastel styling corresponding to screenshot activity types
   const getCardStyle = (res: Reservation, isConflict: boolean) => {
     if (isConflict) {
       return {
-        bg: 'bg-white',
-        border: 'border-rose-300/80 ring-1 ring-rose-300/60',
-        shadow: 'shadow-[0_2px_8px_rgba(244,63,94,0.12),0_1px_2px_rgba(0,0,0,0.04)]',
-        text: 'text-slate-900',
-        accent: '#f43f5e',
-        badgeBg: 'bg-rose-50 text-rose-700 border-rose-200'
+        bg: 'bg-rose-50',
+        border: 'border-rose-400 ring-2 ring-rose-300',
+        shadow: 'shadow-[0_3px_0_rgba(244,63,94,0.6),0_4px_6px_rgba(0,0,0,0.08)]',
+        text: 'text-rose-950',
+        accent: '#e11d48'
       };
     }
 
     const tipo = (res.tipoActividad || '').toUpperCase();
     const desc = (res.descripcion || '').toUpperCase();
 
-    // 1. TALLER MUNICIPAL -> Sapphire Blue
+    // 1. TALLER MUNICIPAL -> Soft Periwinkle Blue
     if (tipo.includes('MUNICIPAL') || desc.includes('MUNICIPAL')) {
       return {
-        bg: 'bg-white',
-        border: 'border-slate-200/80 hover:border-blue-300',
-        shadow: 'shadow-[0_1px_3px_rgba(15,23,42,0.04),0_1px_2px_rgba(15,23,42,0.02)]',
-        text: 'text-slate-900',
-        accent: '#3b82f6',
-        badgeBg: 'bg-blue-50 text-blue-700 border-blue-200'
+        bg: 'bg-[#dbeafe]', // soft light blue
+        border: 'border-[#bfdbfe]',
+        shadow: 'shadow-[0_3px_0_rgba(147,197,253,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
+        text: 'text-[#1e293b]',
+        accent: '#2563eb'
       };
     }
 
-    // 2. TALLER JJV -> Warm Amber Gold
+    // 2. TALLER JJV -> Soft Butter Yellow / Warm Gold
     if (tipo.includes('JJV') || desc.includes('JJV') || tipo.includes('VECINAL')) {
       return {
-        bg: 'bg-white',
-        border: 'border-slate-200/80 hover:border-amber-300',
-        shadow: 'shadow-[0_1px_3px_rgba(15,23,42,0.04),0_1px_2px_rgba(15,23,42,0.02)]',
-        text: 'text-slate-900',
-        accent: '#f59e0b',
-        badgeBg: 'bg-amber-50 text-amber-800 border-amber-200'
+        bg: 'bg-[#fef3c7]', // soft yellow
+        border: 'border-[#fde047]',
+        shadow: 'shadow-[0_3px_0_rgba(253,224,71,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
+        text: 'text-[#1e293b]',
+        accent: '#d97706'
       };
     }
 
-    // 3. TALLER CCD / DEPORTES -> Soft Emerald / Mint
+    // 3. TALLER CCD / DEPORTES -> Soft Mint Green
     if (tipo.includes('CCD') || desc.includes('CCD') || desc.includes('YOGA') || desc.includes('PILATES') || desc.includes('ZUMBA')) {
       return {
-        bg: 'bg-white',
-        border: 'border-slate-200/80 hover:border-emerald-300',
-        shadow: 'shadow-[0_1px_3px_rgba(15,23,42,0.04),0_1px_2px_rgba(15,23,42,0.02)]',
-        text: 'text-slate-900',
-        accent: '#10b981',
-        badgeBg: 'bg-emerald-50 text-emerald-800 border-emerald-200'
+        bg: 'bg-[#dcfce7]', // soft mint
+        border: 'border-[#bbf7d0]',
+        shadow: 'shadow-[0_3px_0_rgba(167,243,208,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
+        text: 'text-[#1e293b]',
+        accent: '#059669'
       };
     }
 
-    // 4. PRÉSTAMO / CAM -> Nordic Teal
+    // 4. PRÉSTAMO / CAM -> Soft Seafoam Aqua
     if (tipo.includes('PRÉSTAMO') || tipo.includes('PRESTAMO') || desc.includes('CAM') || tipo.includes('CAM')) {
       return {
-        bg: 'bg-white',
-        border: 'border-slate-200/80 hover:border-teal-300',
-        shadow: 'shadow-[0_1px_3px_rgba(15,23,42,0.04),0_1px_2px_rgba(15,23,42,0.02)]',
-        text: 'text-slate-900',
-        accent: '#06b6d4',
-        badgeBg: 'bg-cyan-50 text-cyan-800 border-cyan-200'
+        bg: 'bg-[#d1fae5]', // soft aqua-emerald
+        border: 'border-[#a7f3d0]',
+        shadow: 'shadow-[0_3px_0_rgba(167,243,208,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
+        text: 'text-[#1e293b]',
+        accent: '#0d9488'
       };
     }
 
-    // 5. ENSAYO / BAILE / CUMPLEAÑOS -> Warm Coral Peach
+    // 5. ENSAYO / BAILE / CUMPLEAÑOS -> Soft Peach / Warm Apricot
     if (tipo.includes('ENSAYO') || desc.includes('BAILE') || tipo.includes('CUMPLEAÑOS') || desc.includes('DANZA')) {
       return {
-        bg: 'bg-white',
-        border: 'border-slate-200/80 hover:border-orange-300',
-        shadow: 'shadow-[0_1px_3px_rgba(15,23,42,0.04),0_1px_2px_rgba(15,23,42,0.02)]',
-        text: 'text-slate-900',
-        accent: '#f97316',
-        badgeBg: 'bg-orange-50 text-orange-800 border-orange-200'
+        bg: 'bg-[#ffedd5]', // soft peach
+        border: 'border-[#fed7aa]',
+        shadow: 'shadow-[0_3px_0_rgba(253,186,116,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
+        text: 'text-[#1e293b]',
+        accent: '#ea580c'
       };
     }
 
-    // Default: Soft Violet / Lavender
+    // Default: Soft Lavender / Slate
     return {
-      bg: 'bg-white',
-      border: 'border-slate-200/80 hover:border-violet-300',
-      shadow: 'shadow-[0_1px_3px_rgba(15,23,42,0.04),0_1px_2px_rgba(15,23,42,0.02)]',
-      text: 'text-slate-900',
-      accent: '#8b5cf6',
-      badgeBg: 'bg-violet-50 text-violet-800 border-violet-200'
+      bg: 'bg-[#ede9fe]',
+      border: 'border-[#ddd6fe]',
+      shadow: 'shadow-[0_3px_0_rgba(196,181,253,0.8),0_4px_6px_rgba(0,0,0,0.06)]',
+      text: 'text-[#1e293b]',
+      accent: '#7c3aed'
     };
   };
 
@@ -859,44 +829,41 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
         </div>
       )}
 
-      {/* Consolidated Status Ribbon for Daily View (Holiday and/or Conflicts) */}
-      {(conflictIdsToday.size > 0 || getChileanHolidayInfo(dateStr)) && (
-        <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-2xs text-xs backdrop-blur-xs">
-          <div className="flex items-center gap-3 flex-wrap">
-            {getChileanHolidayInfo(dateStr) && (
-              <div className="flex items-center gap-1.5 text-rose-900 font-medium">
-                <span className="text-base leading-none">🇨🇱</span>
-                <span className="font-semibold">{getChileanHolidayInfo(dateStr)?.name}</span>
-                <span className="px-1.5 py-0.2 text-[10px] font-semibold bg-rose-100 text-rose-800 rounded-md border border-rose-200/70">
+      {/* Top Banner if there are conflicts on this day */}
+      {conflictIdsToday.size > 0 && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl px-5 py-2.5 flex items-center justify-between shadow-xs text-xs text-rose-900">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>
+              <strong>¡Atención!</strong> Se detectaron <strong>{conflictIdsToday.size}</strong> {conflictIdsToday.size === 1 ? 'actividad' : 'actividades'} con topamiento de horario en esta fecha.
+            </span>
+          </div>
+          <span className="text-[11px] text-rose-700 bg-white px-2 py-0.5 rounded-lg border border-rose-200 font-semibold">
+            Destacadas con borde rojo
+          </span>
+        </div>
+      )}
+
+      {/* Top Banner if Today is a Chilean Holiday */}
+      {getChileanHolidayInfo(dateStr) && (
+        <div className="bg-rose-50/90 border border-rose-200 rounded-2xl px-5 py-3 flex items-center justify-between shadow-xs text-xs text-rose-900">
+          <div className="flex items-center space-x-2.5">
+            <span className="text-xl">🇨🇱</span>
+            <div>
+              <div className="font-extrabold text-rose-950 flex items-center space-x-2">
+                <span>DÍA FERIADO EN CHILE: {getChileanHolidayInfo(dateStr)?.name}</span>
+                <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-rose-200 text-rose-900">
                   {getChileanHolidayInfo(dateStr)?.isIrrenunciable ? 'Feriado Irrenunciable' : 'Feriado Oficial'}
                 </span>
               </div>
-            )}
-
-            {getChileanHolidayInfo(dateStr) && conflictIdsToday.size > 0 && (
-              <span className="text-slate-300 hidden sm:inline">•</span>
-            )}
-
-            {conflictIdsToday.size > 0 && (
-              <div className="flex items-center gap-1.5 text-amber-900 font-medium">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>
-                  <strong>{conflictIdsToday.size}</strong> {conflictIdsToday.size === 1 ? 'cruce de horario detectado' : 'cruces de horario detectados'}
-                </span>
-                <span className="text-[10px] text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded-md border border-amber-200/70">
-                  Borde rojo
-                </span>
-              </div>
-            )}
+              <p className="text-[11px] text-rose-800 mt-0.5">
+                Por normativa, no se programan reservas estándar en días feriados. Cualquier reserva en esta fecha requiere autorización con clave especial CCD.
+              </p>
+            </div>
           </div>
-
-          <div className="text-[11px] text-slate-500 flex items-center gap-2">
-            {getChileanHolidayInfo(dateStr) && (
-              <span>
-                {dayReservations.length === 0 ? 'Sin reservas' : `${dayReservations.length} autorizada(s)`}
-              </span>
-            )}
-          </div>
+          <span className="text-[11px] font-bold text-rose-800 bg-white px-2.5 py-1 rounded-xl border border-rose-200 shadow-2xs">
+            {dayReservations.length === 0 ? 'Sin reservas (Día Libre)' : `${dayReservations.length} reserva(s) autorizada(s)`}
+          </span>
         </div>
       )}
 
@@ -1204,9 +1171,9 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
         >
           <div className="min-w-[1320px] relative">
             {/* STICKY HEADER ROW: "HORA" + All Space Columns */}
-            <div ref={headerRef} className="sticky top-0 z-30 flex border-b border-slate-200/80 bg-slate-50/95 backdrop-blur-sm text-xs font-semibold text-slate-700 shadow-2xs">
+            <div ref={headerRef} className="sticky top-0 z-30 flex border-b border-slate-200 bg-[#f8fafc] text-xs font-bold text-slate-700 shadow-2xs">
               {/* Left "HORA" header */}
-              <div className="w-[72px] shrink-0 p-2.5 text-center text-[10px] font-bold tracking-wider text-slate-400 border-r border-slate-100 bg-slate-50/90 flex items-center justify-center select-none">
+              <div className="w-[72px] shrink-0 p-3 text-center text-[11px] uppercase tracking-wider font-extrabold text-slate-500 border-r border-slate-200 bg-[#f1f5f9] flex items-center justify-center select-none">
                 HORA
               </div>
 
@@ -1234,22 +1201,22 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                         handleHeaderColumnDrop(e, idx);
                       }
                     }}
-                    className={`flex-1 min-w-[100px] p-2.5 text-center text-xs font-semibold tracking-normal border-r border-slate-100 truncate transition-all cursor-grab active:cursor-grabbing select-none relative group/header ${
+                    className={`flex-1 min-w-[100px] p-2 text-center text-[11px] font-extrabold uppercase tracking-wide border-r border-slate-200 truncate transition-all cursor-grab active:cursor-grabbing select-none relative group/header ${
                       isReservationHeaderTarget
-                        ? 'bg-blue-50 text-blue-900 ring-2 ring-blue-500 ring-inset scale-[1.02] z-40'
+                        ? 'bg-blue-100 text-blue-900 ring-2 ring-blue-500 ring-inset scale-[1.02] z-40'
                         : isHeaderDropTarget
-                        ? 'bg-amber-50 text-amber-900 border-l-4 border-l-amber-500'
+                        ? 'bg-amber-100 text-amber-900 border-l-4 border-l-amber-500'
                         : isHeaderDragged
                         ? 'opacity-40 bg-slate-200'
                         : isSpecial
                         ? 'bg-[#fffaf5] text-amber-900'
-                        : 'bg-slate-50/80 text-slate-700 hover:bg-slate-100/90'
+                        : 'bg-[#f8fafc] text-slate-800 hover:bg-slate-100/80'
                     }`}
                     title={`Arrastra para reordenar columna o suelta aquí una reserva para asignarla a ${space.name}`}
                   >
                     <div className="flex items-center justify-center space-x-1 truncate">
                       <GripVertical className="w-3 h-3 text-slate-400 opacity-0 group-hover/header:opacity-100 transition shrink-0" />
-                      <span className="truncate block font-semibold text-slate-700">{formatSpaceDisplayName(space.name)}</span>
+                      <span className="truncate block">{space.name}</span>
                     </div>
                     {isReservationHeaderTarget && (
                       <span className="text-[9px] font-bold text-blue-600 block leading-tight">
@@ -1505,33 +1472,33 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                         const isMedium = cardHeight >= 72 && cardHeight < 115;
                         const isTall = cardHeight >= 115;
 
-                        // Adaptive padding class: ensures breathing room around left accent strip
+                        // Adaptive padding class
                         const paddingClass = isVeryShort
-                          ? 'py-0.5 pl-3 pr-1.5'
+                          ? 'p-1 px-1.5'
                           : isShort
-                          ? 'py-1 pl-3.5 pr-2'
+                          ? 'p-1.5 px-2'
                           : isMedium
-                          ? 'py-1.5 pl-3.5 pr-2'
-                          : 'py-2 pl-4 pr-2.5';
+                          ? 'p-2'
+                          : 'p-2.5';
 
-                        // Adaptive typography classes (clean Sentence Case instead of ALL CAPS)
+                        // Adaptive typography classes (constrained to max 2 lines total)
                         const titleClass = isVeryShort
-                          ? 'text-[9px] font-semibold text-slate-800 leading-tight truncate'
+                          ? 'text-[8.5px] font-black uppercase tracking-tight text-slate-900 leading-tight truncate'
                           : isShort
                           ? isOverlapping
-                            ? 'text-[9px] font-semibold text-slate-800 leading-tight truncate'
-                            : 'text-[9.5px] font-semibold text-slate-800 leading-tight truncate'
+                            ? 'text-[8.5px] font-black uppercase tracking-tight text-slate-900 leading-tight truncate'
+                            : 'text-[9.5px] font-black uppercase tracking-tight text-slate-900 leading-tight truncate'
                           : isMedium
-                          ? 'text-[10px] font-semibold text-slate-800 leading-tight truncate'
-                          : 'text-[11px] font-semibold text-slate-800 leading-snug truncate';
+                          ? 'text-[10px] font-black uppercase tracking-tight text-slate-900 leading-tight truncate'
+                          : 'text-[10.5px] font-black uppercase tracking-wide text-slate-900 leading-snug truncate';
 
                         const descClass = isVeryShort
-                          ? 'text-[8px] font-normal text-slate-500 leading-none truncate'
+                          ? 'text-[8px] font-medium uppercase text-slate-700 leading-none truncate'
                           : isShort
-                          ? 'text-[8.5px] font-normal text-slate-500 leading-tight line-clamp-1 break-words'
+                          ? 'text-[8.5px] font-semibold uppercase text-slate-700 leading-tight line-clamp-1 break-words'
                           : isMedium
-                          ? 'text-[9px] font-normal text-slate-500 leading-tight line-clamp-1 break-words'
-                          : 'text-[9.5px] font-normal text-slate-500 leading-snug line-clamp-2 break-words';
+                          ? 'text-[8.5px] font-medium uppercase text-slate-700 leading-tight line-clamp-1 break-words'
+                          : 'text-[9px] font-medium uppercase text-slate-700 leading-snug line-clamp-2 break-words';
 
                         return (
                           <div
@@ -1577,17 +1544,11 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                               left: cardLeftStyle,
                               width: cardWidthStyle
                             }}
-                            className={`absolute rounded-xl ${paddingClass} ${styling.bg} border ${styling.border} ${styling.shadow} cursor-grab active:cursor-grabbing hover:scale-[1.01] hover:shadow-md hover:border-slate-300 hover:z-30 transition-all flex flex-col justify-between overflow-hidden select-none z-10 group/card focus:ring-2 focus:ring-blue-500 focus:outline-none focus:z-40 ${
+                            className={`absolute rounded-lg ${paddingClass} ${styling.bg} border ${styling.border} ${styling.shadow} cursor-grab active:cursor-grabbing hover:scale-[1.02] hover:z-30 transition-all flex flex-col justify-between overflow-hidden select-none z-10 group/card focus:ring-2 focus:ring-blue-500 focus:outline-none focus:z-40 ${
                               isBeingDragged ? 'opacity-30 scale-95 ring-2 ring-blue-500' : ''
                             } ${isOverlapping ? 'ring-1 ring-rose-400/50' : ''}`}
                             title={`${isConflict || isOverlapping ? '⚠️ ¡TOPAMIENTO / RESERVAS PARALELAS!\n' : ''}${res.horaInicio} - ${res.horaFin}\nTipo: ${res.tipoActividad}${res.descripcion ? `\nDescripción: ${res.descripcion}` : ''}\n\n👉 ¡Arrastra esta tarjeta a cualquier espacio u horario para moverla!\n(Haz clic para ver detalles)`}
                           >
-                            {/* Left Accent Strip (3.5px rounded vertical bar) */}
-                            <span
-                              className="absolute left-1 top-1.5 bottom-1.5 w-1 rounded-full shrink-0 transition-opacity"
-                              style={{ backgroundColor: styling.accent }}
-                            />
-
                             {/* Main Content Area */}
                             <div className="flex-1 min-h-0 flex flex-col justify-start overflow-hidden">
                               {/* Header row: Grip, Badges & Quick Action Icons */}
@@ -1688,16 +1649,6 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                                       {res.descripcion}
                                     </div>
                                   )}
-
-                                  {/* Line 3: Time slot & Responsible (for medium/tall cards) */}
-                                  {(isMedium || isTall) && (
-                                    <div className="mt-auto pt-1 flex items-center justify-between text-[9px] text-slate-400 font-mono">
-                                      <span>{res.horaInicio} – {res.horaFin}</span>
-                                      {isTall && res.responsable && (
-                                        <span className="truncate max-w-[80px] font-sans text-slate-500 font-normal">{res.responsable}</span>
-                                      )}
-                                    </div>
-                                  )}
                                 </div>
                               )}
                             </div>
@@ -1712,34 +1663,34 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
           </div>
         </div>
 
-        {/* Bottom Legend & Quick Summary (Ultra-compact footer with soft dots) */}
-        <div className="py-1.5 px-4 bg-slate-50/80 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-slate-500 leading-tight">
-          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
-            <span className="font-semibold text-slate-600 text-[10.5px]">Categorías:</span>
-            <div className="flex items-center space-x-1.5">
-              <span className="w-2 h-2 rounded-full bg-blue-500" />
-              <span className="text-[10.5px] font-medium text-slate-600">Taller Municipal</span>
+        {/* Bottom Legend & Quick Summary (Ultra-compact footer) */}
+        <div className="py-1 px-3 bg-[#f8fafc] border-t border-slate-200 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] text-slate-600 leading-tight">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-bold text-slate-700 text-[10px]">Categorías:</span>
+            <div className="flex items-center space-x-1">
+              <span className="w-2.5 h-2.5 rounded-xs bg-[#dbeafe] border border-[#bfdbfe]" />
+              <span className="text-[10px]">Taller Municipal</span>
             </div>
-            <div className="flex items-center space-x-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span className="text-[10.5px] font-medium text-slate-600">Taller JJV</span>
+            <div className="flex items-center space-x-1">
+              <span className="w-2.5 h-2.5 rounded-xs bg-[#fef3c7] border border-[#fde047]" />
+              <span className="text-[10px]">Taller JJV</span>
             </div>
-            <div className="flex items-center space-x-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span className="text-[10.5px] font-medium text-slate-600">Taller CCD / Deportes</span>
+            <div className="flex items-center space-x-1">
+              <span className="w-2.5 h-2.5 rounded-xs bg-[#dcfce7] border border-[#bbf7d0]" />
+              <span className="text-[10px]">Taller CCD / Deportes</span>
             </div>
-            <div className="flex items-center space-x-1.5">
-              <span className="w-2 h-2 rounded-full bg-cyan-500" />
-              <span className="text-[10.5px] font-medium text-slate-600">Préstamo / CAM</span>
+            <div className="flex items-center space-x-1">
+              <span className="w-2.5 h-2.5 rounded-xs bg-[#d1fae5] border border-[#a7f3d0]" />
+              <span className="text-[10px]">Préstamo / CAM</span>
             </div>
-            <div className="flex items-center space-x-1.5">
-              <span className="w-2 h-2 rounded-full bg-orange-500" />
-              <span className="text-[10.5px] font-medium text-slate-600">Ensayo / Danza</span>
+            <div className="flex items-center space-x-1">
+              <span className="w-2.5 h-2.5 rounded-xs bg-[#ffedd5] border border-[#fed7aa]" />
+              <span className="text-[10px]">Ensayo / Danza</span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2 text-slate-400 font-mono text-[10.5px]">
-            <span>Total: <strong className="text-slate-700">{dayReservations.length}</strong> {dayReservations.length === 1 ? 'actividad' : 'actividades'} en <strong className="text-slate-700">{activeSpaces.length}</strong> {activeSpaces.length === 1 ? 'espacio' : 'espacios'}</span>
+          <div className="flex items-center space-x-2 text-slate-500 font-mono text-[10px]">
+            <span>Total: <strong>{dayReservations.length}</strong> {dayReservations.length === 1 ? 'actividad' : 'actividades'} en <strong>{activeSpaces.length}</strong> {activeSpaces.length === 1 ? 'espacio' : 'espacios'}</span>
           </div>
         </div>
       </div>

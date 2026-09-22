@@ -182,14 +182,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Desktop Navigation Tabs */}
-          <nav aria-label="Navegación principal" className="hidden md:flex items-center space-x-0.5 lg:space-x-1 bg-slate-100/70 p-1 rounded-xl border border-slate-200/60 shrink min-w-0 overflow-x-auto scrollbar-none">
+          <nav aria-label="Navegación principal" className="hidden md:flex items-center space-x-0.5 lg:space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shrink min-w-0 overflow-x-auto scrollbar-none">
             <button
               id="nav-tab-mobile"
               onClick={() => onViewChange('mobile')}
-              className={`min-h-[38px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
+              className={`min-h-[40px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
                 currentView === 'mobile'
-                  ? 'bg-white text-blue-700 shadow-2xs font-semibold'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
+                  ? 'bg-white text-blue-700 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <Smartphone className="w-4 h-4 text-blue-600" />
@@ -199,10 +199,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="nav-tab-calendar"
               onClick={() => onViewChange('calendar')}
-              className={`min-h-[38px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
+              className={`min-h-[40px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
                 currentView === 'calendar'
-                  ? 'bg-white text-blue-700 shadow-2xs font-semibold'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
+                  ? 'bg-white text-blue-700 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <Calendar className="w-4 h-4" />
@@ -212,10 +212,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="nav-tab-timeline"
               onClick={() => onViewChange('timeline')}
-              className={`min-h-[38px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
+              className={`min-h-[40px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
                 currentView === 'timeline' || currentView === 'daily'
-                  ? 'bg-white text-blue-700 shadow-2xs font-semibold'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
+                  ? 'bg-white text-blue-700 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <Clock className="w-4 h-4" />
@@ -225,10 +225,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="nav-tab-analytics"
               onClick={() => onViewChange('analytics')}
-              className={`min-h-[38px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
+              className={`min-h-[40px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
                 currentView === 'analytics'
-                  ? 'bg-white text-blue-700 shadow-2xs font-semibold'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
+                  ? 'bg-white text-blue-700 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <BarChart3 className="w-4 h-4" />
@@ -238,10 +238,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="nav-tab-ratings"
               onClick={() => onViewChange('ratings')}
-              className={`min-h-[38px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
+              className={`min-h-[40px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
                 currentView === 'ratings'
-                  ? 'bg-white text-amber-700 shadow-2xs font-semibold'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
+                  ? 'bg-white text-amber-700 shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
@@ -252,7 +252,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 id="nav-tab-conflicts"
                 onClick={() => onViewChange('conflicts')}
-                className={`min-h-[38px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                className={`min-h-[40px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                   currentView === 'conflicts'
                     ? 'bg-rose-600 text-white shadow-xs font-bold'
                     : 'bg-white text-slate-700 hover:text-slate-900 border border-slate-200'
@@ -273,10 +273,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="nav-tab-admin"
               onClick={() => onViewChange('admin')}
-              className={`min-h-[38px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
+              className={`min-h-[40px] flex items-center space-x-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
                 currentView === 'admin'
-                  ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
+                  ? 'bg-blue-600 text-white shadow-xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <ShieldCheck className="w-4 h-4" />
@@ -290,9 +290,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="btn-new-reservation"
               onClick={onNewReservation}
-              className="min-h-[40px] sm:min-h-[42px] flex items-center space-x-1.5 sm:space-x-2 px-3 sm:px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-xs hover:shadow-sm transition active:scale-95 cursor-pointer shrink-0"
+              className="min-h-[40px] sm:min-h-[44px] flex items-center space-x-1.5 sm:space-x-2 px-2.5 sm:px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition active:scale-95 cursor-pointer shrink-0"
             >
-              <Plus className="w-4 h-4 shrink-0 stroke-[2.2]" />
+              <Plus className="w-4 h-4 shrink-0 stroke-[2.5]" />
               <span className="hidden sm:inline">Nueva Reserva</span>
               <span className="sm:hidden">Nueva</span>
             </button>
