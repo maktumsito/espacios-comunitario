@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Reservation, isSingleDayMultiSpaceReservation } from '../types';
 import { SPACES_LIST } from '../data/spacesData';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
-import { AuthUser, isCoordinatorOrAdmin } from '../services/authService';
+import { AuthUser, userCanDeleteReservations } from '../services/authService';
 import { BaseModal } from './common/BaseModal';
 import {
   AlertTriangle,
@@ -54,7 +54,7 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
 
   if (!isOpen || !reservation) return null;
 
-  const canDirectlyDelete = isCoordinatorOrAdmin(currentUser);
+  const canDirectlyDelete = userCanDeleteReservations(currentUser);
   const hasPendingRequest = Boolean(reservation.solicitudEliminacion);
 
   const isMultiSpace = isSingleDayMultiSpaceReservation(reservation);
@@ -91,8 +91,8 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
     : 'Solicitar Eliminación de Reserva';
 
   const modalSubtitle = canDirectlyDelete
-    ? 'Como Administrador o Coordinador, esta acción eliminará directamente la reserva.'
-    : 'Al no poseer perfil Administrador o Coordinador, quedará en espera de autorización.';
+    ? 'Como usuario con permisos de eliminación autorizados, esta acción eliminará directamente la reserva.'
+    : 'Al no poseer autorización para eliminar directamente, quedará en espera de confirmación.';
 
   const modalIcon = canDirectlyDelete
     ? <AlertTriangle className="w-5 h-5 text-rose-600" />

@@ -21,6 +21,10 @@ export interface AuthUser {
   createdAt?: string;
   isCustom?: boolean;
   isMasterAdmin?: boolean;
+  // Permisos granulares de reservas administrados exclusivamente por Cristian Shute:
+  canCreateReservations?: boolean; // ¿Puede registrar nuevas reservas?
+  canEditReservations?: boolean;   // ¿Puede editar o cambiar reservas existentes?
+  canDeleteReservations?: boolean; // ¿Puede eliminar reservas?
 }
 
 export interface UserAccount extends AuthUser {
@@ -39,7 +43,10 @@ export const DEFAULT_USERS: UserAccount[] = [
     initials: 'CS',
     avatarColor: 'bg-blue-600',
     createdAt: '2026-01-01T00:00:00.000Z',
-    isMasterAdmin: true
+    isMasterAdmin: true,
+    canCreateReservations: true,
+    canEditReservations: true,
+    canDeleteReservations: true
   },
   {
     username: 'patricio flores',
@@ -49,7 +56,10 @@ export const DEFAULT_USERS: UserAccount[] = [
     initials: 'PF',
     avatarColor: 'bg-emerald-600',
     createdAt: '2026-01-01T00:00:00.000Z',
-    isMasterAdmin: true
+    isMasterAdmin: true,
+    canCreateReservations: true,
+    canEditReservations: true,
+    canDeleteReservations: true
   },
   {
     username: 'pato flores',
@@ -59,7 +69,10 @@ export const DEFAULT_USERS: UserAccount[] = [
     initials: 'PF',
     avatarColor: 'bg-emerald-600',
     createdAt: '2026-01-01T00:00:00.000Z',
-    isMasterAdmin: true
+    isMasterAdmin: true,
+    canCreateReservations: true,
+    canEditReservations: true,
+    canDeleteReservations: true
   },
   {
     username: 'gonzalo carrasco',
@@ -68,7 +81,10 @@ export const DEFAULT_USERS: UserAccount[] = [
     role: 'Recepción',
     initials: 'GC',
     avatarColor: 'bg-indigo-600',
-    createdAt: '2026-01-01T00:00:00.000Z'
+    createdAt: '2026-01-01T00:00:00.000Z',
+    canCreateReservations: true,
+    canEditReservations: false,
+    canDeleteReservations: false
   },
   {
     username: 'miguel angel gomez',
@@ -77,7 +93,10 @@ export const DEFAULT_USERS: UserAccount[] = [
     role: 'Gestión',
     initials: 'MG',
     avatarColor: 'bg-violet-600',
-    createdAt: '2026-01-01T00:00:00.000Z'
+    createdAt: '2026-01-01T00:00:00.000Z',
+    canCreateReservations: true,
+    canEditReservations: false,
+    canDeleteReservations: false
   }
 ];
 
@@ -433,6 +452,74 @@ export function isMasterAdmin(user?: AuthUser | UserAccount | null): boolean {
   const role = (user.role || '').trim().toLowerCase();
   return role === 'administrador';
 }
+
+/**
+ * Identifica si un usuario es específicamente Cristian Shute (Super Administrador titular y dueño de la cuenta maestra).
+ */
+export function isCristianShute(user?: AuthUser | UserAccount | null): boolean {
+  if (!user) return false;
+  const username = (user.username || '').trim().toLowerCase();
+  const name = (user.name || '').trim().toLowerCase();
+  const email = (user.email || '').trim().toLowerCase();
+  
+  return (
+    username === 'cristian shute' ||
+    username === 'shutito' ||
+    name === 'cristian shute' ||
+    name.includes('cristian shute') ||
+    email === 'cristianshute@gmail.com'
+  );
+}
+
+/**
+ * Determina si el usuario tiene permiso para registrar nuevas reservas.
+ * Cristian Shute siempre posee permiso maestro absoluto.
+ * Si Cristian Shute configuró explícitamente el permiso en el usuario, se respeta la decisión.
+ */
+export function userCanCreateReservations(user?: AuthUser | UserAccount | null): boolean {
+  if (!user) return false;
+  if (isCristianShute(user) || isMasterAdmin(user)) return true;
+  if (typeof user.canCreateReservations === 'boolean') {
+    return user.canCreateReservations;
+  }
+  // Default por rol si aún no se ha configurado explícitamente:
+  const role = (user.role || '').trim().toLowerCase();
+  if (role === 'auxiliar' || role === 'tecnico' || role === 'técnico' || role.includes('operativo')) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Determina si el usuario tiene permiso para editar o cambiar reservas existentes.
+ * Cristian Shute siempre posee permiso maestro absoluto.
+ * Si Cristian Shute configuró explícitamente el permiso en el usuario, se respeta la decisión.
+ */
+export function userCanEditReservations(user?: AuthUser | UserAccount | null): boolean {
+  if (!user) return false;
+  if (isCristianShute(user) || isMasterAdmin(user)) return true;
+  if (typeof user.canEditReservations === 'boolean') {
+    return user.canEditReservations;
+  }
+  // Default por rol si aún no se ha configurado explícitamente:
+  return isCoordinatorOrAdmin(user);
+}
+
+/**
+ * Determina si el usuario tiene permiso para eliminar reservas directamente.
+ * Cristian Shute siempre posee permiso maestro absoluto.
+ * Si Cristian Shute configuró explícitamente el permiso en el usuario, se respeta la decisión.
+ */
+export function userCanDeleteReservations(user?: AuthUser | UserAccount | null): boolean {
+  if (!user) return false;
+  if (isCristianShute(user) || isMasterAdmin(user)) return true;
+  if (typeof user.canDeleteReservations === 'boolean') {
+    return user.canDeleteReservations;
+  }
+  // Default por rol si aún no se ha configurado explícitamente:
+  return isCoordinatorOrAdmin(user);
+}
+
 
 /**
  * Elimina un usuario por su username y lo borra de Firestore

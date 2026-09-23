@@ -1,6 +1,17 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { SpaceInfo, LoanType, ActivityTypeItem, EquipmentItem, Reservation, SpaceBlock, SpaceRating, ApplicantSummary } from '../types';
-import { UserAccount, getAllAuthorizedUsers, AuthUser, isCoordinatorOrAdmin, isAuxiliar, isMasterAdmin } from '../services/authService';
+import {
+  UserAccount,
+  getAllAuthorizedUsers,
+  AuthUser,
+  isCoordinatorOrAdmin,
+  isAuxiliar,
+  isMasterAdmin,
+  isCristianShute,
+  userCanCreateReservations,
+  userCanEditReservations,
+  userCanDeleteReservations
+} from '../services/authService';
 import {
   getStoredEquipment,
   saveEquipmentItem,
@@ -58,7 +69,10 @@ import {
   LogOut,
   Package,
   Mail,
-  Repeat
+  Repeat,
+  ShieldAlert,
+  CalendarPlus,
+  FilePenLine
 } from 'lucide-react';
 
 export type AdminTab = 'spaces' | 'activities' | 'equipment' | 'users' | 'maintenance' | 'applicants' | 'gmail' | 'recurring';
@@ -429,6 +443,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [userFormError, setUserFormError] = useState('');
   const [showFormPassword, setShowFormPassword] = useState(false);
 
+  const isShute = isCristianShute(currentUser);
+  const [permissionSuccessToast, setPermissionSuccessToast] = useState<string | null>(null);
+
   const [userForm, setUserForm] = useState<UserAccount>({
     username: '',
     name: '',
@@ -436,7 +453,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
     role: 'Coordinador',
     initials: 'NU',
     avatarColor: 'bg-blue-600',
-    phone: ''
+    phone: '',
+    canCreateReservations: true,
+    canEditReservations: true,
+    canDeleteReservations: true
   });
 
   // Drag and Drop handlers for Spaces
@@ -625,7 +645,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setShowFormPassword(false);
     if (user) {
       setEditingUsername(user.username);
-      setUserForm({ ...user });
+      setUserForm({
+        ...user,
+        canCreateReservations: userCanCreateReservations(user),
+        canEditReservations: userCanEditReservations(user),
+        canDeleteReservations: userCanDeleteReservations(user)
+      });
     } else {
       setEditingUsername(null);
       const initialName = '';
@@ -638,7 +663,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
         initials: 'NU',
         avatarColor: AVATAR_COLOR_OPTIONS[Math.floor(Math.random() * AVATAR_COLOR_OPTIONS.length)].id,
         phone: '',
-        isCustom: true
+        isCustom: true,
+        canCreateReservations: true,
+        canEditReservations: true,
+        canDeleteReservations: false
       });
     }
     setIsUserFormOpen(true);
@@ -716,7 +744,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
       username: cleanUsername,
       passwordHash: cleanPassword,
       initials: (userForm.initials || getInitialsFromName(cleanName)).toUpperCase().substring(0, 3),
-      isCustom: true
+      isCustom: true,
+      canCreateReservations: Boolean(userForm.canCreateReservations),
+      canEditReservations: Boolean(userForm.canEditReservations),
+      canDeleteReservations: Boolean(userForm.canDeleteReservations)
     };
 
     if (onSaveUser) {
@@ -735,6 +766,109 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
 
     setIsUserFormOpen(false);
+  };
+
+  // ----------------------------------------------------
+  // CRISTIAN SHUTE PERMISSION TOGGLE HANDLERS
+  // ----------------------------------------------------
+  const handleToggleUserPermission = (
+    targetUser: UserAccount,
+    permKey: 'canCreateReservations' | 'canEditReservations' | 'canDeleteReservations',
+    newValue: boolean
+  ) => {
+    if (!isCristianShute(currentUser)) {
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Acceso Exclusivo',
+        message: 'Solo Cristian Shute posee autorización para modificar los permisos de reservas en los usuarios.',
+        variant: 'warning',
+        confirmLabel: 'Entendido',
+        hideCancel: true,
+        onConfirm: () => setConfirmDialog(null)
+      });
+      return;
+    }
+
+    if (isCristianShute(targetUser)) {
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Usuario Maestro Protegido',
+        message: 'La cuenta de Cristian Shute mantiene acceso maestro permanente y no puede ser restringida.',
+        variant: 'info',
+        confirmLabel: 'Aceptar',
+        hideCancel: true,
+        onConfirm: () => setConfirmDialog(null)
+      });
+      return;
+    }
+
+    const updatedUser: UserAccount = {
+      ...targetUser,
+      canCreateReservations: permKey === 'canCreateReservations' ? newValue : userCanCreateReservations(targetUser),
+      canEditReservations: permKey === 'canEditReservations' ? newValue : userCanEditReservations(targetUser),
+      canDeleteReservations: permKey === 'canDeleteReservations' ? newValue : userCanDeleteReservations(targetUser)
+    };
+
+    if (onSaveUser) {
+      onSaveUser(updatedUser, targetUser.username);
+    } else {
+      setLocalUsers((prev) => {
+        const idx = prev.findIndex((u) => u.username.toLowerCase() === targetUser.username.toLowerCase());
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = updatedUser;
+          return next;
+        }
+        return [...prev, updatedUser];
+      });
+    }
+
+    const permLabel =
+      permKey === 'canCreateReservations'
+        ? 'Registro de nuevas reservas'
+        : permKey === 'canEditReservations'
+        ? 'Edición y modificación de reservas'
+        : 'Eliminación de reservas';
+    setPermissionSuccessToast(`✓ ${permLabel} ${newValue ? 'HABILITADO' : 'DESACTIVADO'} para ${targetUser.name} en Firestore.`);
+    setTimeout(() => {
+      setPermissionSuccessToast(null);
+    }, 4000);
+  };
+
+  const handleBulkSetPermissions = (mode: 'all_enabled' | 'create_only' | 'view_only') => {
+    if (!isCristianShute(currentUser)) return;
+
+    let targetCount = 0;
+    effectiveUsers.forEach((usr) => {
+      if (isMasterAdmin(usr) || isCristianShute(usr)) return;
+
+      const newPerms = {
+        canCreateReservations: mode === 'all_enabled' || mode === 'create_only',
+        canEditReservations: mode === 'all_enabled',
+        canDeleteReservations: mode === 'all_enabled'
+      };
+
+      const updated: UserAccount = {
+        ...usr,
+        ...newPerms
+      };
+
+      targetCount++;
+      if (onSaveUser) {
+        onSaveUser(updated, usr.username);
+      }
+    });
+
+    const modeLabels = {
+      all_enabled: 'Total (Crear, Editar y Eliminar habilitados para todos)',
+      create_only: 'Registro Único (Solo creación permitida; edición y eliminación bloqueadas)',
+      view_only: 'Solo Lectura (Bloqueada creación, edición y eliminación)'
+    };
+
+    setPermissionSuccessToast(`✓ Modo "${modeLabels[mode]}" aplicado exitosamente a ${targetCount} usuarios en Firestore.`);
+    setTimeout(() => {
+      setPermissionSuccessToast(null);
+    }, 4500);
   };
 
   const handleDeleteUserConfirm = () => {
@@ -1335,6 +1469,75 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </div>
           </div>
 
+          {/* Cristian Shute Master Reservation Permissions Executive Banner */}
+          {isShute && (
+            <div className="bg-gradient-to-r from-blue-900 via-indigo-950 to-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-lg border border-blue-700/50 space-y-4 animate-fadeIn">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="space-y-1.5 max-w-2xl">
+                  <div className="flex items-center space-x-2">
+                    <span className="px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] tracking-wider uppercase flex items-center gap-1 shadow-xs">
+                      👑 Sesión Maestra: Cristian Shute
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/30 text-[10px] font-bold">
+                      Control Exclusivo
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0" />
+                    <span>Control Maestro de Permisos de Reservas por Usuario</span>
+                  </h3>
+                  <p className="text-xs text-blue-100/80 leading-relaxed">
+                    Como titular de la cuenta, puedes <strong>activar o desactivar</strong> en cada usuario la facultad de <strong>registrar nuevas reservas</strong> o <strong>editar, cambiar y eliminar</strong> las reservas existentes. Los cambios se guardan y sincronizan de forma inmediata en Firestore hacia todos los dispositivos.
+                  </p>
+                </div>
+
+                {/* Bulk Quick Actions */}
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/15 space-y-2 shrink-0">
+                  <div className="text-[10.5px] font-bold text-blue-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Acciones Rápidas Globales:</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleBulkSetPermissions('all_enabled')}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-500/90 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      title="Permite a todos los operadores crear, editar y eliminar reservas"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Habilitar Todo a Todos</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkSetPermissions('create_only')}
+                      className="px-3 py-1.5 rounded-xl bg-amber-500/90 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      title="Permite a los usuarios registrar nuevas reservas pero bloquea editar o eliminar existentes"
+                    >
+                      <CalendarPlus className="w-3.5 h-3.5" />
+                      <span>Solo Crear Reservas</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkSetPermissions('view_only')}
+                      className="px-3 py-1.5 rounded-xl bg-slate-700/90 hover:bg-slate-700 active:scale-95 text-white text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      title="Bloquea creación, edición y eliminación para operadores"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Modo Solo Consulta</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {permissionSuccessToast && (
+                <div className="text-xs font-bold px-3.5 py-2 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 rounded-xl animate-fadeIn flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{permissionSuccessToast}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Quick Metrics Bar */}
           {showCategories ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1489,6 +1692,175 @@ export const AdminView: React.FC<AdminViewProps> = ({
                           <KeyRound className="w-3 h-3 text-amber-600" />
                           <span>Cambiar Clave</span>
                         </button>
+                      )}
+                    </div>
+
+                    {/* Reservation Capabilities Section */}
+                    <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-3 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                          <CalendarPlus className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Permisos de Reservas</span>
+                        </span>
+                        {isShute ? (
+                          <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                            Editable por ti
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">
+                            Por Cristian Shute
+                          </span>
+                        )}
+                      </div>
+
+                      {isCristianShute(usr) ? (
+                        <div className="p-2 rounded-lg bg-amber-50/80 border border-amber-200/80 text-[11px] text-amber-900 flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span className="font-bold leading-tight">Acceso Maestro Permanente: Registro, edición y eliminación sin restricciones.</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {/* Permiso 1: Registrar Nuevas Reservas */}
+                          <div className="flex items-center justify-between text-xs py-1 border-b border-slate-200/60">
+                            <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                              <span>Registrar nuevas</span>
+                            </span>
+                            {isShute ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleToggleUserPermission(
+                                    usr,
+                                    'canCreateReservations',
+                                    !userCanCreateReservations(usr)
+                                  )
+                                }
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition cursor-pointer flex items-center gap-1 border ${
+                                  userCanCreateReservations(usr)
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                                    : 'bg-rose-100 text-rose-800 border-rose-300 hover:bg-rose-200'
+                                }`}
+                                title="Haz clic para activar o desactivar este permiso"
+                              >
+                                {userCanCreateReservations(usr) ? (
+                                  <>
+                                    <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                                    <span>Activado</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <X className="w-3 h-3 text-rose-600 stroke-[3]" />
+                                    <span>Bloqueado</span>
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  userCanCreateReservations(usr)
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-rose-50 text-rose-700 border-rose-200'
+                                }`}
+                              >
+                                {userCanCreateReservations(usr) ? 'Permitido' : 'Restringido'}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Permiso 2: Editar o Modificar Reservas */}
+                          <div className="flex items-center justify-between text-xs py-1 border-b border-slate-200/60">
+                            <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                              <span>Editar / Modificar</span>
+                            </span>
+                            {isShute ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleToggleUserPermission(
+                                    usr,
+                                    'canEditReservations',
+                                    !userCanEditReservations(usr)
+                                  )
+                                }
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition cursor-pointer flex items-center gap-1 border ${
+                                  userCanEditReservations(usr)
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                                    : 'bg-rose-100 text-rose-800 border-rose-300 hover:bg-rose-200'
+                                }`}
+                                title="Haz clic para activar o desactivar este permiso"
+                              >
+                                {userCanEditReservations(usr) ? (
+                                  <>
+                                    <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                                    <span>Activado</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <X className="w-3 h-3 text-rose-600 stroke-[3]" />
+                                    <span>Bloqueado</span>
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  userCanEditReservations(usr)
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-rose-50 text-rose-700 border-rose-200'
+                                }`}
+                              >
+                                {userCanEditReservations(usr) ? 'Permitido' : 'Restringido'}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Permiso 3: Eliminar Reservas */}
+                          <div className="flex items-center justify-between text-xs py-1">
+                            <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                              <span>Eliminar reservas</span>
+                            </span>
+                            {isShute ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleToggleUserPermission(
+                                    usr,
+                                    'canDeleteReservations',
+                                    !userCanDeleteReservations(usr)
+                                  )
+                                }
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition cursor-pointer flex items-center gap-1 border ${
+                                  userCanDeleteReservations(usr)
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                                    : 'bg-rose-100 text-rose-800 border-rose-300 hover:bg-rose-200'
+                                }`}
+                                title="Haz clic para activar o desactivar este permiso"
+                              >
+                                {userCanDeleteReservations(usr) ? (
+                                  <>
+                                    <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
+                                    <span>Activado</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <X className="w-3 h-3 text-rose-600 stroke-[3]" />
+                                    <span>Bloqueado</span>
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  userCanDeleteReservations(usr)
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-rose-50 text-rose-700 border-rose-200'
+                                }`}
+                              >
+                                {userCanDeleteReservations(usr) ? 'Permitido' : 'Restringido'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1998,6 +2370,75 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
                   className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                 />
+              </div>
+
+              {/* Reservation Permissions Section (Controlled by Cristian Shute) */}
+              <div className="pt-2.5 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <CalendarPlus className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Permisos de Gestión de Reservas</span>
+                  </label>
+                  {isShute ? (
+                    <span className="text-[9.5px] font-black px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 border border-blue-200">
+                      Exclusivo Cristian Shute
+                    </span>
+                  ) : (
+                    <span className="text-[9.5px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">
+                      Solo lectura
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+                  <label className="flex items-center justify-between text-xs font-medium text-slate-800 cursor-pointer">
+                    <div className="space-y-0.5 pr-2">
+                      <div className="font-bold text-slate-900">Registrar nuevas reservas</div>
+                      <div className="text-[10px] text-slate-500">Permite ingresar y agendar reservas nuevas en el calendario</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={!isShute}
+                      checked={Boolean(userForm.canCreateReservations)}
+                      onChange={(e) =>
+                        setUserForm({ ...userForm, canCreateReservations: e.target.checked })
+                      }
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 disabled:opacity-40 cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between text-xs font-medium text-slate-800 cursor-pointer pt-2 border-t border-slate-200/60">
+                    <div className="space-y-0.5 pr-2">
+                      <div className="font-bold text-slate-900">Editar y modificar reservas existentes</div>
+                      <div className="text-[10px] text-slate-500">Permite editar horarios, espacios, actividades o cancelar/reactivar</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={!isShute}
+                      checked={Boolean(userForm.canEditReservations)}
+                      onChange={(e) =>
+                        setUserForm({ ...userForm, canEditReservations: e.target.checked })
+                      }
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 disabled:opacity-40 cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between text-xs font-medium text-slate-800 cursor-pointer pt-2 border-t border-slate-200/60">
+                    <div className="space-y-0.5 pr-2">
+                      <div className="font-bold text-slate-900">Eliminar reservas directamente</div>
+                      <div className="text-[10px] text-slate-500">Permite suprimir y borrar reservas sin requerir autorización</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      disabled={!isShute}
+                      checked={Boolean(userForm.canDeleteReservations)}
+                      onChange={(e) =>
+                        setUserForm({ ...userForm, canDeleteReservations: e.target.checked })
+                      }
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 disabled:opacity-40 cursor-pointer"
+                    />
+                  </label>
+                </div>
               </div>
 
               {/* Live Preview Chip */}

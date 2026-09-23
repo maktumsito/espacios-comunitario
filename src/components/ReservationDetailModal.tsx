@@ -27,7 +27,13 @@ import { getPhoneContactActions } from '../utils/phoneUtils';
 import { CommitmentLetterCard } from './CommitmentLetterCard';
 import { isCommitmentLetterEligible } from '../utils/commitmentLetterPdf';
 import { checkLoanScheduleLimit } from '../utils/validationUtils';
-import { AuthUser, isCoordinatorOrAdmin } from '../services/authService';
+import {
+  AuthUser,
+  isCoordinatorOrAdmin,
+  userCanCreateReservations,
+  userCanEditReservations,
+  userCanDeleteReservations
+} from '../services/authService';
 import { ConfirmationModal } from './common/ConfirmationModal';
 import { BaseModal } from './common/BaseModal';
 
@@ -106,7 +112,9 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
 
   if (!isOpen || !reservation) return null;
 
-  const canModify = isCoordinatorOrAdmin(currentUser);
+  const canModify = userCanEditReservations(currentUser);
+  const canDelete = userCanDeleteReservations(currentUser);
+  const canCreate = userCanCreateReservations(currentUser);
 
   const getSpaceColor = (spaceName: string) => {
     const found = SPACES_LIST.find(s => s.name.toUpperCase() === spaceName.toUpperCase());
@@ -614,7 +622,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
         {/* Footer Actions: Carta, Edit & Delete */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200">
           <div className="flex items-center space-x-2">
-            {canModify ? (
+            {canDelete ? (
               <button
                 id="btn-detail-delete"
                 type="button"
@@ -681,7 +689,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                 }}
                 className="flex items-center space-x-1.5 text-xs text-amber-800 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 font-bold px-3 py-2 rounded-xl transition shadow-xs cursor-pointer"
                 aria-label="Solicitar eliminación de esta reserva"
-                title="Solicitar eliminación (quedará en espera de autorización por un Administrador o Coordinador)"
+                title="Solicitar eliminación (quedará en espera de autorización por un Administrador o Coordinador autorizado)"
               >
                 <Clock className="w-4 h-4 text-amber-600" />
                 <span>Solicitar Eliminación</span>
@@ -709,7 +717,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
-            {onDuplicate && (
+            {onDuplicate && canCreate && (
               <button
                 id="btn-detail-duplicate"
                 type="button"
@@ -760,11 +768,11 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
               </>
             ) : (
               <div
-                title="Solo los usuarios Administradores y Coordinadores están autorizados para editar o modificar reservas."
+                title="No posees permisos para modificar o cancelar reservas (gestión controlada por Cristian Shute)."
                 className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-400 text-xs font-medium cursor-not-allowed"
               >
                 <Lock className="w-3.5 h-3.5 text-slate-400" />
-                <span>Solo Admin/Coord puede editar</span>
+                <span>Modificación no autorizada</span>
               </div>
             )}
           </div>

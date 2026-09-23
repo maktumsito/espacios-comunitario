@@ -1,6 +1,12 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Reservation, SpaceInfo, SpaceBlock, SpaceRating } from '../types';
-import { AuthUser, isCoordinatorOrAdmin } from '../services/authService';
+import {
+  AuthUser,
+  isCoordinatorOrAdmin,
+  userCanCreateReservations,
+  userCanEditReservations,
+  userCanDeleteReservations
+} from '../services/authService';
 import { normalizeSpaceName } from '../data/spacesData';
 import { formatDateYYYYMMDD, parseDateToNoon } from '../utils/dateUtils';
 import { getFuzzyMatchIds } from '../utils/fuzzySearch';
@@ -91,6 +97,10 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
   const [onlyConflicts, setOnlyConflicts] = useState<boolean>(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(null);
+
+  const canCreate = userCanCreateReservations(currentUser);
+  const canEdit = userCanEditReservations(currentUser);
+  const canDelete = userCanDeleteReservations(currentUser);
 
   const dayStripRef = useRef<HTMLDivElement>(null);
   const selectedDayIso = useMemo(() => formatDateYYYYMMDD(selectedDate), [selectedDate]);
@@ -651,7 +661,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                 ? 'No se encontraron resultados con los filtros actuales.'
                 : `El día ${selectedDate.getDate()} de ${MONTH_NAMES[selectedDate.getMonth()]} se encuentra totalmente disponible.`}
             </p>
-            {onNewReservationForDate && (
+            {onNewReservationForDate && canCreate && (
               <button
                 type="button"
                 id="btn-mobile-empty-add-reservation"
@@ -909,7 +919,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                     onClick={(e) => e.stopPropagation()}
                   >
                     {/* Left: Asistencia / Realizada toggle */}
-                    {onToggleRealizada ? (
+                    {onToggleRealizada && canEdit ? (
                       <button
                         type="button"
                         onClick={() => onToggleRealizada(res)}
@@ -961,18 +971,20 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                         </button>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() => onEditReservation(res)}
-                        aria-label="Editar reserva"
-                        className="min-h-[44px] px-3 py-2 rounded-lg bg-white border border-slate-200 text-blue-700 hover:bg-blue-50 flex items-center justify-center gap-1.5 text-xs font-semibold transition cursor-pointer"
-                        title="Editar reserva"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                        <span>Editar</span>
-                      </button>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => onEditReservation(res)}
+                          aria-label="Editar reserva"
+                          className="min-h-[44px] px-3 py-2 rounded-lg bg-white border border-slate-200 text-blue-700 hover:bg-blue-50 flex items-center justify-center gap-1.5 text-xs font-semibold transition cursor-pointer"
+                          title="Editar reserva"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                          <span>Editar</span>
+                        </button>
+                      )}
 
-                      {onDuplicateReservation && (
+                      {onDuplicateReservation && canCreate && (
                         <button
                           type="button"
                           onClick={() => onDuplicateReservation(res)}
@@ -989,15 +1001,15 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            if (isCoordinatorOrAdmin(currentUser) && onDeleteReservation) {
+                            if (canDelete && onDeleteReservation) {
                               onDeleteReservation(res.id, res.actividadRecurrente === 'Sí', res.recurrenteId);
                             } else if (onRequestDelete) {
                               onRequestDelete(res);
                             }
                           }}
-                          aria-label="Eliminar reserva"
+                          aria-label={canDelete ? "Eliminar reserva" : "Solicitar eliminación de reserva"}
                           className="min-h-[44px] px-3 py-2 rounded-lg bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 flex items-center justify-center gap-1.5 text-xs font-semibold transition cursor-pointer"
-                          title="Eliminar reserva"
+                          title={canDelete ? "Eliminar reserva" : "Solicitar eliminación"}
                         >
                           <Trash2 className="w-4 h-4" />
                           <span>Eliminar</span>
@@ -1013,7 +1025,7 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
       </div>
 
       {/* 7. FLOATING ACTION BUTTON (FAB) FOR MOBILE */}
-      {onNewReservationForDate && (
+      {onNewReservationForDate && canCreate && (
         <div className="fixed bottom-6 right-4 z-40">
           <button
             type="button"
