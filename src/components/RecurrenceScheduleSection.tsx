@@ -28,29 +28,13 @@ import {
   isSameMonth
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Reservation, SpaceInfo } from '../types';
-import { formatDateDDMMYYYY } from '../utils/dateUtils';
+import { Reservation, SpaceInfo, CustomScheduleSlot } from '../types';
+import { formatDateDDMMYYYY, WEEKDAYS } from '../utils/dateUtils';
 import { getChileanHolidayInfo, HolidayFilterResult } from '../utils/holidayUtils';
 
-export const WEEKDAYS = [
-  { dayNum: 1, key: 'lunes', short: 'Lun', full: 'Lunes' },
-  { dayNum: 2, key: 'martes', short: 'Mar', full: 'Martes' },
-  { dayNum: 3, key: 'miercoles', short: 'Mié', full: 'Miércoles' },
-  { dayNum: 4, key: 'jueves', short: 'Jue', full: 'Jueves' },
-  { dayNum: 5, key: 'viernes', short: 'Vie', full: 'Viernes' },
-  { dayNum: 6, key: 'sabado', short: 'Sáb', full: 'Sábado' },
-  { dayNum: 0, key: 'domingo', short: 'Dom', full: 'Domingo' }
-];
+export { WEEKDAYS };
+export type { CustomScheduleSlot };
 
-export interface CustomScheduleSlot {
-  horaInicio: string;
-  horaFin: string;
-  espacio?: string;
-  hasSecondSlot?: boolean;
-  secondHoraInicio?: string;
-  secondHoraFin?: string;
-  secondEspacio?: string;
-}
 
 export interface RecurrenceScheduleSectionProps {
   bookingMode: 'single' | 'specific' | 'pattern';

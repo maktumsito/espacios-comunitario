@@ -31,8 +31,11 @@ export function getNextDayIso(dateStr: string): string {
 }
 
 // ==========================================
-// PURE UTILITY FUNCTIONS
+// PURE UTILITY FUNCTIONS (WITH MEMOIZATION CACHES)
 // ==========================================
+
+const spaceNormCache = new Map<string, string>();
+const spaceConstituentsCache = new Map<string, string[]>();
 
 /**
  * Normalizes space name by trimming, uppercasing, stripping diacritical accents,
@@ -42,12 +45,20 @@ export function normalizeSpace(spaceName?: string): string {
   if (!spaceName) {
     return '';
   }
-  return spaceName
+  const cached = spaceNormCache.get(spaceName);
+  if (cached !== undefined) return cached;
+
+  const result = spaceName
     .trim()
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ');
+
+  if (spaceNormCache.size < 500) {
+    spaceNormCache.set(spaceName, result);
+  }
+  return result;
 }
 
 /**
@@ -55,8 +66,16 @@ export function normalizeSpace(spaceName?: string): string {
  */
 export function getConstituentSpaces(spaceName?: string): string[] {
   if (!spaceName) return [];
+  const cached = spaceConstituentsCache.get(spaceName);
+  if (cached !== undefined) return cached;
+
   const parts = spaceName.split(/\s*(?:\/|\+)\s*/);
-  return parts.map(p => normalizeSpace(p)).filter(Boolean);
+  const result = parts.map(p => normalizeSpace(p)).filter(Boolean);
+
+  if (spaceConstituentsCache.size < 500) {
+    spaceConstituentsCache.set(spaceName, result);
+  }
+  return result;
 }
 
 /**
@@ -65,6 +84,7 @@ export function getConstituentSpaces(spaceName?: string): string[] {
  */
 export function doSpacesConflict(spaceA?: string, spaceB?: string): boolean {
   if (!spaceA || !spaceB) return false;
+  if (spaceA === spaceB) return true;
   const normA = normalizeSpace(spaceA);
   const normB = normalizeSpace(spaceB);
   if (normA === normB) return true;
@@ -161,6 +181,17 @@ export function isDateExemptFromConflicts(dateString?: string): boolean {
 export function timeToMinutes(timeString: string): number {
   if (!timeString) {
     return 0;
+  }
+
+  // Zero-allocation fast path for canonical "HH:mm" time strings (e.g. "08:30", "14:00")
+  if (timeString.length === 5 && timeString.charCodeAt(2) === 58) {
+    const c0 = timeString.charCodeAt(0) - 48;
+    const c1 = timeString.charCodeAt(1) - 48;
+    const c3 = timeString.charCodeAt(3) - 48;
+    const c4 = timeString.charCodeAt(4) - 48;
+    if (c0 >= 0 && c0 <= 9 && c1 >= 0 && c1 <= 9 && c3 >= 0 && c3 <= 9 && c4 >= 0 && c4 <= 9) {
+      return (c0 * 10 + c1) * MINUTES_PER_HOUR + (c3 * 10 + c4);
+    }
   }
 
   const [rawHours, rawMinutes] = timeString.trim().split(':');

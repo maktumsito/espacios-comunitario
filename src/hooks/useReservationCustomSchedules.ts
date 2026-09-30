@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Reservation, SpaceInfo } from '../types';
-import { CustomScheduleSlot } from '../components/RecurrenceScheduleSection';
+import { Reservation, SpaceInfo, CustomScheduleSlot } from '../types';
 
 interface UseReservationCustomSchedulesParams {
   formData: Partial<Reservation>;

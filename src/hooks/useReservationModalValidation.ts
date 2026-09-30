@@ -17,8 +17,8 @@ import {
   LoanScheduleLimitResult,
   ActivityDescriptionValidationResult
 } from '../utils/validationUtils';
-import { formatDateDDMMYYYY } from '../utils/dateUtils';
-import { WEEKDAYS, CustomScheduleSlot } from '../components/RecurrenceScheduleSection';
+import { formatDateDDMMYYYY, WEEKDAYS } from '../utils/dateUtils';
+import { CustomScheduleSlot } from '../types';
 
 interface UseReservationModalValidationProps {
   formData: Partial<Reservation>;

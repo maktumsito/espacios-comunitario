@@ -205,3 +205,14 @@ export function getChileLocalDateString(date: Date = new Date()): string {
     return `${year}-${month}-${day}`;
   }
 }
+
+export const WEEKDAYS = [
+  { dayNum: 1, key: 'lunes', short: 'Lun', full: 'Lunes' },
+  { dayNum: 2, key: 'martes', short: 'Mar', full: 'Martes' },
+  { dayNum: 3, key: 'miercoles', short: 'Mié', full: 'Miércoles' },
+  { dayNum: 4, key: 'jueves', short: 'Jue', full: 'Jueves' },
+  { dayNum: 5, key: 'viernes', short: 'Vie', full: 'Viernes' },
+  { dayNum: 6, key: 'sabado', short: 'Sáb', full: 'Sábado' },
+  { dayNum: 0, key: 'domingo', short: 'Dom', full: 'Domingo' }
+] as const;
+

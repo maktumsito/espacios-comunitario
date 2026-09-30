@@ -290,3 +290,26 @@ export interface BookingConflict {
   fecha: string;
   solapamiento: string;
 }
+
+export interface CustomScheduleSlot {
+  horaInicio: string;
+  horaFin: string;
+  espacio?: string;
+  hasSecondSlot?: boolean;
+  secondHoraInicio?: string;
+  secondHoraFin?: string;
+  secondEspacio?: string;
+}
+
+export interface ConflictSavePayload {
+  bookingMode?: 'single' | 'specific' | 'pattern';
+  specificDates?: string[];
+  dateSchedules?: Record<string, CustomScheduleSlot>;
+  useCustomSchedulesPerDate?: boolean;
+  formDataUpdates?: Partial<Reservation>;
+  secondSpaceUpdates?: {
+    space?: string;
+    startTime?: string;
+    endTime?: string;
+  };
+}

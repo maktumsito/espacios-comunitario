@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Reservation } from '../types';
-import { CustomScheduleSlot } from '../components/ReservationModal';
+import { Reservation, CustomScheduleSlot } from '../types';
 
 export interface AutosavedReservationDraft {
   version: number;

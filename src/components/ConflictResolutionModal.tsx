@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Reservation, SpaceInfo } from '../types';
-import { CustomScheduleSlot } from './ReservationModal';
+import { Reservation, SpaceInfo, CustomScheduleSlot, ConflictSavePayload } from '../types';
 import { checkSingleConflict, timeToMinutes, formatMinutesToTime } from '../utils/conflictDetector';
 import { findAvailableTimeSlotsInSpace, findAlternativeFreeSpaces } from '../utils/conflictRecommender';
 import { formatDateDDMMYYYY, getDayOfWeekFromDateString } from '../utils/dateUtils';
@@ -18,6 +17,8 @@ import {
   ShieldAlert
 } from 'lucide-react';
 
+export type { CustomScheduleSlot, ConflictSavePayload };
+
 export interface CandidateConflictItem {
   id: string; // e.g. `${date}_slot${slotNumber}`
   date: string;
@@ -29,18 +30,6 @@ export interface CandidateConflictItem {
   conflicts: Reservation[];
 }
 
-export interface ConflictSavePayload {
-  bookingMode?: 'single' | 'specific' | 'pattern';
-  specificDates?: string[];
-  dateSchedules?: Record<string, CustomScheduleSlot>;
-  useCustomSchedulesPerDate?: boolean;
-  formDataUpdates?: Partial<Reservation>;
-  secondSpaceUpdates?: {
-    space?: string;
-    startTime?: string;
-    endTime?: string;
-  };
-}
 
 interface ConflictResolutionModalProps {
   isOpen: boolean;

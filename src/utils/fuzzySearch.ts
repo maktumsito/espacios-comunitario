@@ -20,6 +20,19 @@ const defaultFuseOptions: IFuseOptions<Reservation> = {
   shouldSort: true
 };
 
+// In-memory cache for Fuse index keyed by reservations array reference
+let cachedReservationsRef: readonly Reservation[] | null = null;
+let cachedFuseInstance: Fuse<Reservation> | null = null;
+
+export function getReservationsFuse(reservations: Reservation[]): Fuse<Reservation> {
+  if (cachedFuseInstance && cachedReservationsRef === reservations) {
+    return cachedFuseInstance;
+  }
+  cachedReservationsRef = reservations;
+  cachedFuseInstance = new Fuse(reservations, defaultFuseOptions);
+  return cachedFuseInstance;
+}
+
 /**
  * Searches a list of reservations prioritizing exact and substring matches,
  * with Fuse.js fuzzy matching as fallback for typo tolerance.
@@ -96,7 +109,7 @@ export function fuzzySearchReservations(
 
   // 2. Fallback to Fuse.js for typo tolerance (only for non-date/year textual queries)
   if (!isYearOrDateQuery) {
-    const fuse = new Fuse(reservations, defaultFuseOptions);
+    const fuse = getReservationsFuse(reservations);
     const fuseResults = fuse.search(trimmed);
 
     for (const match of fuseResults) {

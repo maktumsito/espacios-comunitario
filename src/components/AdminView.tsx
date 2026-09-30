@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { SpaceInfo, LoanType, ActivityTypeItem, EquipmentItem, Reservation, SpaceBlock, SpaceRating, ApplicantSummary } from '../types';
 import {
   UserAccount,
@@ -19,10 +19,24 @@ import {
   resetEquipmentToDefaults
 } from '../services/equipmentService';
 import { ConfirmationModal } from './common/ConfirmationModal';
-import { MaintenanceDashboardView } from './MaintenanceDashboardView';
-import { ApplicantDirectoryView } from './ApplicantDirectoryView';
-import { AdminGmailConfig } from './AdminGmailConfig';
-import { AdminRecurringView } from './AdminRecurringView';
+import { lazyWithRetry } from '../utils/lazyWithRetry';
+
+const MaintenanceDashboardView = lazyWithRetry(
+  () => import('./MaintenanceDashboardView').then(m => ({ default: m.MaintenanceDashboardView })),
+  'MaintenanceDashboardView'
+);
+const ApplicantDirectoryView = lazyWithRetry(
+  () => import('./ApplicantDirectoryView').then(m => ({ default: m.ApplicantDirectoryView })),
+  'ApplicantDirectoryView'
+);
+const AdminGmailConfig = lazyWithRetry(
+  () => import('./AdminGmailConfig').then(m => ({ default: m.AdminGmailConfig })),
+  'AdminGmailConfig'
+);
+const AdminRecurringView = lazyWithRetry(
+  () => import('./AdminRecurringView').then(m => ({ default: m.AdminRecurringView })),
+  'AdminRecurringView'
+);
 import { executeMinuteConflictCleanupMigration } from '../services/migrations/cleanMinuteConflictsMigration';
 import {
   Building2,
@@ -2196,11 +2210,20 @@ export const AdminView: React.FC<AdminViewProps> = ({
       {/* TAB 5: MAINTENANCE & SPACE BLOCKS */}
       {activeTab === 'maintenance' && (
         <div className="space-y-4">
-          <MaintenanceDashboardView
-            blocks={spaceBlocks || []}
-            onSaveBlock={onSaveBlock || (async () => {})}
-            onDeleteBlock={onDeleteBlock || (async () => {})}
-          />
+          <Suspense
+            fallback={
+              <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <span>Cargando mantenciones...</span>
+              </div>
+            }
+          >
+            <MaintenanceDashboardView
+              blocks={spaceBlocks || []}
+              onSaveBlock={onSaveBlock || (async () => {})}
+              onDeleteBlock={onDeleteBlock || (async () => {})}
+            />
+          </Suspense>
 
           {/* Card de Optimización de Base de Datos y Cuotas Firestore */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
@@ -2236,35 +2259,62 @@ export const AdminView: React.FC<AdminViewProps> = ({
       {/* TAB 6: APPLICANTS DIRECTORY */}
       {activeTab === 'applicants' && (
         <div className="space-y-4">
-          <ApplicantDirectoryView
-            reservations={reservations || []}
-            ratings={ratings || []}
-            onSelectReservation={onSelectReservation}
-            onNewReservationForApplicant={onNewReservationForApplicant}
-          />
+          <Suspense
+            fallback={
+              <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <span>Cargando directorio de solicitantes...</span>
+              </div>
+            }
+          >
+            <ApplicantDirectoryView
+              reservations={reservations || []}
+              ratings={ratings || []}
+              onSelectReservation={onSelectReservation}
+              onNewReservationForApplicant={onNewReservationForApplicant}
+            />
+          </Suspense>
         </div>
       )}
 
       {/* TAB 7: GMAIL DISPATCH CONFIGURATION (cristianshute@gmail.com) */}
       {activeTab === 'gmail' && (
-        <AdminGmailConfig
-          activityTypes={activityTypes}
-          loanTypes={loanTypes}
-          onOpenGmailDispatch={onOpenGmailDispatch}
-          currentUser={currentUser}
-        />
+        <Suspense
+          fallback={
+            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+              <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <span>Cargando configuración de despacho...</span>
+            </div>
+          }
+        >
+          <AdminGmailConfig
+            activityTypes={activityTypes}
+            loanTypes={loanTypes}
+            onOpenGmailDispatch={onOpenGmailDispatch}
+            currentUser={currentUser}
+          />
+        </Suspense>
       )}
 
       {/* TAB 8: RECURRING ACTIVITIES & PROGRAMMED SERIES */}
       {activeTab === 'recurring' && (
-        <AdminRecurringView
-          reservations={reservations || []}
-          spaces={spaces}
-          activityTypes={activityTypes}
-          onSaveReservation={onSaveReservation}
-          onDeleteReservation={onDeleteReservation}
-          onEditReservation={onEditReservation}
-        />
+        <Suspense
+          fallback={
+            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+              <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <span>Cargando actividades recurrentes...</span>
+            </div>
+          }
+        >
+          <AdminRecurringView
+            reservations={reservations || []}
+            spaces={spaces}
+            activityTypes={activityTypes}
+            onSaveReservation={onSaveReservation}
+            onDeleteReservation={onDeleteReservation}
+            onEditReservation={onEditReservation}
+          />
+        </Suspense>
       )}
 
       {/* --- MODAL FORM: CREATE / EDIT USER --- */}

@@ -24,8 +24,8 @@ import {
   LoanScheduleLimitResult,
   ActivityDescriptionValidationResult
 } from '../utils/validationUtils';
-import { WEEKDAYS, CustomScheduleSlot } from '../components/RecurrenceScheduleSection';
-import { ConflictSavePayload } from '../components/ConflictResolutionModal';
+import { WEEKDAYS } from '../utils/dateUtils';
+import { CustomScheduleSlot, ConflictSavePayload } from '../types';
 import { AuthUser } from '../services/authService';
 
 export interface SeriesItemSlot {

@@ -14,35 +14,55 @@ const AUDIT_CACHE_KEY = 'all_audit_logs';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+/**
+ * Checks whether the current environment supports IndexedDB without throwing.
+ */
+export function isIndexedDbSupported(): boolean {
+  return typeof window !== 'undefined' && typeof window.indexedDB !== 'undefined' && !!window.indexedDB;
+}
+
 function getDbInstance(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
 
+  if (!isIndexedDbSupported()) {
+    return Promise.reject(new Error('IndexedDB is not supported in this environment'));
+  }
+
   dbPromise = new Promise((resolve, reject) => {
-    if (typeof window === 'undefined' || !window.indexedDB) {
-      reject(new Error('IndexedDB is not supported in this environment'));
-      return;
+    try {
+      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME);
+        }
+        if (!db.objectStoreNames.contains(AUDIT_STORE_NAME)) {
+          db.createObjectStore(AUDIT_STORE_NAME);
+        }
+      };
+
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onclose = () => {
+          dbPromise = null;
+        };
+        db.onversionchange = () => {
+          db.close();
+          dbPromise = null;
+        };
+        resolve(db);
+      };
+
+      request.onerror = () => {
+        dbPromise = null;
+        console.warn('Error opening IndexedDB:', request.error);
+        reject(request.error);
+      };
+    } catch (err) {
+      dbPromise = null;
+      reject(err);
     }
-
-    const request = window.indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-      if (!db.objectStoreNames.contains(AUDIT_STORE_NAME)) {
-        db.createObjectStore(AUDIT_STORE_NAME);
-      }
-    };
-
-    request.onsuccess = () => {
-      resolve(request.result);
-    };
-
-    request.onerror = () => {
-      console.warn('Error opening IndexedDB:', request.error);
-      reject(request.error);
-    };
   });
 
   return dbPromise;
@@ -52,6 +72,9 @@ function getDbInstance(): Promise<IDBDatabase> {
  * Retrieves all cached reservations from IndexedDB asynchronously.
  */
 export async function getIndexedDbReservations(): Promise<Reservation[] | null> {
+  if (!isIndexedDbSupported()) {
+    return null;
+  }
   try {
     const db = await getDbInstance();
     return new Promise((resolve) => {
@@ -74,7 +97,9 @@ export async function getIndexedDbReservations(): Promise<Reservation[] | null> 
       };
     });
   } catch (err) {
-    console.warn('IndexedDB unavailable:', err);
+    if (isIndexedDbSupported()) {
+      console.warn('IndexedDB unavailable:', err);
+    }
     return null;
   }
 }
@@ -83,6 +108,9 @@ export async function getIndexedDbReservations(): Promise<Reservation[] | null> 
  * Stores reservations in IndexedDB without blocking or hitting localStorage limits.
  */
 export async function setIndexedDbReservations(reservations: readonly Reservation[]): Promise<void> {
+  if (!isIndexedDbSupported()) {
+    return;
+  }
   try {
     const db = await getDbInstance();
     return new Promise((resolve, reject) => {
@@ -97,7 +125,9 @@ export async function setIndexedDbReservations(reservations: readonly Reservatio
       };
     });
   } catch (err) {
-    console.warn('Could not persist to IndexedDB:', err);
+    if (isIndexedDbSupported()) {
+      console.warn('Could not persist to IndexedDB:', err);
+    }
   }
 }
 
@@ -105,6 +135,9 @@ export async function setIndexedDbReservations(reservations: readonly Reservatio
  * Clears the reservation cache store in IndexedDB.
  */
 export async function clearIndexedDbReservations(): Promise<void> {
+  if (!isIndexedDbSupported()) {
+    return;
+  }
   try {
     const db = await getDbInstance();
     return new Promise((resolve) => {
@@ -115,7 +148,9 @@ export async function clearIndexedDbReservations(): Promise<void> {
       request.onerror = () => resolve();
     });
   } catch (err) {
-    console.warn('Could not clear IndexedDB:', err);
+    if (isIndexedDbSupported()) {
+      console.warn('Could not clear IndexedDB:', err);
+    }
   }
 }
 
@@ -124,6 +159,9 @@ export async function clearIndexedDbReservations(): Promise<void> {
  * Bypasses browser localStorage ~5MB quota limits.
  */
 export async function getIndexedDbAuditLogs(): Promise<AuditChangeLogEntry[] | null> {
+  if (!isIndexedDbSupported()) {
+    return null;
+  }
   try {
     const db = await getDbInstance();
     return new Promise((resolve) => {
@@ -146,7 +184,9 @@ export async function getIndexedDbAuditLogs(): Promise<AuditChangeLogEntry[] | n
       };
     });
   } catch (err) {
-    console.warn('IndexedDB unavailable for audit logs:', err);
+    if (isIndexedDbSupported()) {
+      console.warn('IndexedDB unavailable for audit logs:', err);
+    }
     return null;
   }
 }
@@ -155,6 +195,9 @@ export async function getIndexedDbAuditLogs(): Promise<AuditChangeLogEntry[] | n
  * Stores audit logs in IndexedDB with quota-safe durability.
  */
 export async function setIndexedDbAuditLogs(entries: readonly AuditChangeLogEntry[]): Promise<void> {
+  if (!isIndexedDbSupported()) {
+    return;
+  }
   try {
     const db = await getDbInstance();
     return new Promise((resolve, reject) => {
@@ -169,7 +212,9 @@ export async function setIndexedDbAuditLogs(entries: readonly AuditChangeLogEntr
       };
     });
   } catch (err) {
-    console.warn('Could not persist audit logs to IndexedDB:', err);
+    if (isIndexedDbSupported()) {
+      console.warn('Could not persist audit logs to IndexedDB:', err);
+    }
   }
 }
 
@@ -177,6 +222,9 @@ export async function setIndexedDbAuditLogs(entries: readonly AuditChangeLogEntr
  * Clears the audit log store in IndexedDB.
  */
 export async function clearIndexedDbAuditLogs(): Promise<void> {
+  if (!isIndexedDbSupported()) {
+    return;
+  }
   try {
     const db = await getDbInstance();
     return new Promise((resolve) => {
@@ -187,6 +235,8 @@ export async function clearIndexedDbAuditLogs(): Promise<void> {
       request.onerror = () => resolve();
     });
   } catch (err) {
-    console.warn('Could not clear audit logs in IndexedDB:', err);
+    if (isIndexedDbSupported()) {
+      console.warn('Could not clear audit logs in IndexedDB:', err);
+    }
   }
 }

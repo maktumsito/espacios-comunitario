@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Reservation, SpaceInfo, UpdateScope } from '../types';
+import { Reservation, SpaceInfo, UpdateScope, CustomScheduleSlot } from '../types';
 import { checkSingleConflict, timeToMinutes, formatMinutesToTime } from '../utils/conflictDetector';
 import {
   ConflictRecommendation,
@@ -7,7 +7,6 @@ import {
   findAlternativeFreeSpaces
 } from '../utils/conflictRecommender';
 import { formatDateDDMMYYYY, getDayOfWeekFromDateString } from '../utils/dateUtils';
-import { CustomScheduleSlot } from '../components/RecurrenceScheduleSection';
 
 interface UseReservationConflictResolutionProps {
   formData: Partial<Reservation>;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { Reservation, ViewMode, FilterState, isSingleDayMultiSpaceReservation, BatchUpdateInfo, SpaceRating } from './types';
 import { normalizeSpaceName } from './data/spacesData';
 import { isChileanHoliday } from './utils/holidayUtils';
@@ -19,7 +19,6 @@ import { CalendarView } from './components/CalendarView';
 import { DailyUsageView } from './components/DailyUsageView';
 import { MobileAgendaView } from './components/MobileAgendaView';
 import { getInitialViewMode, isMobileDevice, persistViewPreference } from './utils/deviceUtils';
-import { ReservationDetailModal } from './components/ReservationDetailModal';
 import {
   recordAuditEntry,
   computeReservationDiff
@@ -36,9 +35,21 @@ import { useRatingsState } from './hooks/useRatingsState';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useAuditLogs } from './hooks/useAuditLogs';
 import { useSpaceBlocks } from './hooks/useSpaceBlocks';
-import { ReservationModal } from './components/ReservationModal';
-import { GlobalCommandPalette } from './components/GlobalCommandPalette';
 import { lazyWithRetry } from './utils/lazyWithRetry';
+
+// Code-split heavy modals to minimize initial bundle size and boost initial paint performance
+const ReservationModal = lazyWithRetry(
+  () => import('./components/ReservationModal').then((m) => ({ default: m.ReservationModal })),
+  'ReservationModal'
+);
+const ReservationDetailModal = lazyWithRetry(
+  () => import('./components/ReservationDetailModal').then((m) => ({ default: m.ReservationDetailModal })),
+  'ReservationDetailModal'
+);
+const GlobalCommandPalette = lazyWithRetry(
+  () => import('./components/GlobalCommandPalette').then((m) => ({ default: m.GlobalCommandPalette })),
+  'GlobalCommandPalette'
+);
 
 // Code-split heavy views & modals with resilient lazyWithRetry to reduce initial bundle size and boost reliability
 const SpaceDashboard = lazyWithRetry(
@@ -337,12 +348,33 @@ export default function App() {
     backupId?: string;
   } | null>(null);
 
+  const reservationsRef = useRef(reservations);
+  reservationsRef.current = reservations;
+
+  // Preload heavy modals on idle to ensure instantaneous 0ms interaction response
+  useEffect(() => {
+    const preload = () => {
+      import('./components/ReservationModal');
+      import('./components/ReservationDetailModal');
+      import('./components/GlobalCommandPalette');
+    };
+    if (typeof window !== 'undefined') {
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(preload, { timeout: 3000 });
+      } else {
+        setTimeout(preload, 2000);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
 
     const executeScheduledBackupCheck = async () => {
       try {
-        const check = await checkAndRunScheduledBackup(reservations);
+        const currentResList = reservationsRef.current;
+        if (!currentResList || currentResList.length === 0) return;
+        const check = await checkAndRunScheduledBackup(currentResList);
         if (isMounted && check.triggered && check.backup) {
           console.log(`[Copia Automática 15 Días] Ejecutada con éxito: ${check.backup.id} (${check.backup.totalReservas} reservas)`);
           setBackupToast({
@@ -1248,113 +1280,117 @@ export default function App() {
 
       {/* Modals */}
       {isReservationModalOpen && (
-        <ReservationModal
-          isOpen={isReservationModalOpen}
-          onClose={() => {
-            setIsReservationModalOpen(false);
-            setEditingReservation(null);
-            setIsDuplicating(false);
-            setPrefillDate('');
-            setPrefillSpace('');
-            setPrefillStartTime('10:00');
-            setPrefillEndTime('11:00');
-            setPrefillResponsable('');
-            setPrefillRut('');
-            setPrefillPhone('');
-            setPrefillEmail('');
-          }}
-          onSave={handleCreateOrUpdate}
-          onDelete={handleDelete}
-          onRequestDelete={handleRequestDelete}
-          editingReservation={editingReservation}
-          isDuplicating={isDuplicating}
-          onDuplicateReservation={handleDuplicateReservation}
-          allReservations={reservations}
-          availableSpaces={spaces}
-          availableLoanTypes={loanTypes}
-          availableActivityTypes={activityTypes}
-          availableEquipment={equipment}
-          ratings={ratings}
-          spaceBlocks={spaceBlocks}
-          currentUser={currentUser}
-          initialDate={prefillDate}
-          initialSpace={prefillSpace}
-          initialStartTime={prefillStartTime}
-          initialEndTime={prefillEndTime}
-          initialResponsable={prefillResponsable}
-          initialRut={prefillRut}
-          initialPhone={prefillPhone}
-          initialEmail={prefillEmail}
-        />
+        <Suspense fallback={null}>
+          <ReservationModal
+            isOpen={isReservationModalOpen}
+            onClose={() => {
+              setIsReservationModalOpen(false);
+              setEditingReservation(null);
+              setIsDuplicating(false);
+              setPrefillDate('');
+              setPrefillSpace('');
+              setPrefillStartTime('10:00');
+              setPrefillEndTime('11:00');
+              setPrefillResponsable('');
+              setPrefillRut('');
+              setPrefillPhone('');
+              setPrefillEmail('');
+            }}
+            onSave={handleCreateOrUpdate}
+            onDelete={handleDelete}
+            onRequestDelete={handleRequestDelete}
+            editingReservation={editingReservation}
+            isDuplicating={isDuplicating}
+            onDuplicateReservation={handleDuplicateReservation}
+            allReservations={reservations}
+            availableSpaces={spaces}
+            availableLoanTypes={loanTypes}
+            availableActivityTypes={activityTypes}
+            availableEquipment={equipment}
+            ratings={ratings}
+            spaceBlocks={spaceBlocks}
+            currentUser={currentUser}
+            initialDate={prefillDate}
+            initialSpace={prefillSpace}
+            initialStartTime={prefillStartTime}
+            initialEndTime={prefillEndTime}
+            initialResponsable={prefillResponsable}
+            initialRut={prefillRut}
+            initialPhone={prefillPhone}
+            initialEmail={prefillEmail}
+          />
+        </Suspense>
       )}
 
       {isDetailModalOpen && (
-        <ReservationDetailModal
-          isOpen={isDetailModalOpen}
-          reservation={selectedReservation}
-          allReservations={reservations}
-          currentUser={currentUser}
-          existingRating={
-            selectedReservation
-              ? ratings.find((rt) => rt.reservationId === selectedReservation.id) || null
-              : null
-          }
-          onOpenRatingModal={handleOpenRatingModal}
-          onClose={() => {
-            setIsDetailModalOpen(false);
-            setSelectedReservation(null);
-          }}
-          onUpdateReservation={async (updated) => {
-            if (!userCanEditReservations(currentUser)) {
-              triggerSyncToast('Permiso denegado: No tienes autorización para modificar reservas (gestión controlada por Cristian Shute).', 'error');
-              return;
+        <Suspense fallback={null}>
+          <ReservationDetailModal
+            isOpen={isDetailModalOpen}
+            reservation={selectedReservation}
+            allReservations={reservations}
+            currentUser={currentUser}
+            existingRating={
+              selectedReservation
+                ? ratings.find((rt) => rt.reservationId === selectedReservation.id) || null
+                : null
             }
-            setReservations((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-            setSelectedReservation(updated);
-            await saveReservation(updated);
-          }}
-          onEdit={(r) => {
-            if (!userCanEditReservations(currentUser)) {
-              triggerSyncToast('Permiso denegado: No tienes autorización para editar reservas (gestión controlada por Cristian Shute).', 'error');
-              return;
-            }
-            requireAuth(() => {
-              setEditingReservation(r);
-              setIsDuplicating(false);
-              setPrefillDate(r.fecha);
-              setPrefillSpace(r.espacio);
-              setPrefillStartTime(r.horaInicio || '10:00');
-              setPrefillEndTime(r.horaFin || '11:00');
-              setIsReservationModalOpen(true);
-            }, 'editar esta reserva');
-          }}
-          onDuplicate={(r) => {
-            handleDuplicateReservation(r);
-          }}
-          onDelete={(id, isSeries, seriesId) => {
-            if (!userCanDeleteReservations(currentUser)) {
-              const target = reservations.find((r) => r.id === id);
-              if (target) handleRequestDelete(target);
-              return;
-            }
-            requireAuth(() => handleDelete(id, isSeries, seriesId), 'eliminar esta reserva');
-          }}
-          onRequestDelete={(r) => {
-            handleRequestDelete(r);
-          }}
-          onAuthorizeDelete={handleAuthorizeDelete}
-          onRejectDeleteRequest={handleRejectDeleteRequest}
-          onToggleRealizada={(reserva) => {
-            if (!userCanEditReservations(currentUser)) {
-              triggerSyncToast('Permiso denegado: No tienes autorización para modificar reservas (gestión controlada por Cristian Shute).', 'error');
-              return;
-            }
-            requireAuth(() => handleQuickToggleRealizada(reserva), 'actualizar asistencia de reserva');
-          }}
-          onOpenGmailDispatch={(date, filterMode, resId) => {
-            openGmailDispatchModal(date, filterMode, resId);
-          }}
-        />
+            onOpenRatingModal={handleOpenRatingModal}
+            onClose={() => {
+              setIsDetailModalOpen(false);
+              setSelectedReservation(null);
+            }}
+            onUpdateReservation={async (updated) => {
+              if (!userCanEditReservations(currentUser)) {
+                triggerSyncToast('Permiso denegado: No tienes autorización para modificar reservas (gestión controlada por Cristian Shute).', 'error');
+                return;
+              }
+              setReservations((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+              setSelectedReservation(updated);
+              await saveReservation(updated);
+            }}
+            onEdit={(r) => {
+              if (!userCanEditReservations(currentUser)) {
+                triggerSyncToast('Permiso denegado: No tienes autorización para editar reservas (gestión controlada por Cristian Shute).', 'error');
+                return;
+              }
+              requireAuth(() => {
+                setEditingReservation(r);
+                setIsDuplicating(false);
+                setPrefillDate(r.fecha);
+                setPrefillSpace(r.espacio);
+                setPrefillStartTime(r.horaInicio || '10:00');
+                setPrefillEndTime(r.horaFin || '11:00');
+                setIsReservationModalOpen(true);
+              }, 'editar esta reserva');
+            }}
+            onDuplicate={(r) => {
+              handleDuplicateReservation(r);
+            }}
+            onDelete={(id, isSeries, seriesId) => {
+              if (!userCanDeleteReservations(currentUser)) {
+                const target = reservations.find((r) => r.id === id);
+                if (target) handleRequestDelete(target);
+                return;
+              }
+              requireAuth(() => handleDelete(id, isSeries, seriesId), 'eliminar esta reserva');
+            }}
+            onRequestDelete={(r) => {
+              handleRequestDelete(r);
+            }}
+            onAuthorizeDelete={handleAuthorizeDelete}
+            onRejectDeleteRequest={handleRejectDeleteRequest}
+            onToggleRealizada={(reserva) => {
+              if (!userCanEditReservations(currentUser)) {
+                triggerSyncToast('Permiso denegado: No tienes autorización para modificar reservas (gestión controlada por Cristian Shute).', 'error');
+                return;
+              }
+              requireAuth(() => handleQuickToggleRealizada(reserva), 'actualizar asistencia de reserva');
+            }}
+            onOpenGmailDispatch={(date, filterMode, resId) => {
+              openGmailDispatchModal(date, filterMode, resId);
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Container modularizado para todos los modales auxiliares de la aplicación */}
@@ -1462,57 +1498,61 @@ export default function App() {
       />
 
       {/* Global Quick Search & Command Palette (Ctrl+K / Cmd+K / /) */}
-      <GlobalCommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={() => setIsCommandPaletteOpen(false)}
-        reservations={reservations}
-        spaces={spaces}
-        onSelectReservation={(r) => {
-          setSelectedReservation(r);
-          setIsDetailModalOpen(true);
-        }}
-        onNavigateToView={(view) => setCurrentView(view)}
-        onNewReservation={() => openCreateModal({ date: format(selectedDailyDate || new Date(), 'yyyy-MM-dd') })}
-        onOpenPrintModal={() => setIsGlobalPrintModalOpen(true)}
-        onOpenGmailDispatch={() => openGmailDispatchModal()}
-        onOpenAuditLog={() => {
-          if (!isCoordinatorOrAdmin(currentUser)) {
-            triggerSyncToast('El sistema de restauración de cambios está disponible únicamente para Administradores y Coordinadores.', 'warning');
-            return;
-          }
-          setIsAuditLogOpen(true);
-        }}
-        onOpenImportExport={() => {
-          requireAuth(() => setIsImportExportModalOpen(true), 'gestionar copias de seguridad');
-        }}
-        onNavigateToDate={(date) => {
-          setSelectedDailyDate(date);
-          setCurrentView('daily');
-        }}
-        onFilterBySpace={(spaceName) => {
-          setFilters((prev) => ({ ...prev, espacio: spaceName }));
-          if (!isFilterBarOpen) setIsFilterBarOpen(true);
-        }}
-        onFilterByApplicant={(nameOrRut) => {
-          setFilters((prev) => ({ ...prev, search: nameOrRut }));
-          if (!isFilterBarOpen) setIsFilterBarOpen(true);
-        }}
-        onClearFilters={() => {
-          setFilters({
-            search: '',
-            espacio: '',
-            tipoActividad: '',
-            fechaDesde: '',
-            fechaHasta: '',
-            soloRecurrentes: false,
-            soloImportantes: false,
-            soloConTopamiento: false
-          });
-          triggerSyncToast('Filtros restablecidos', 'info');
-        }}
-        conflictsCount={conflicts.length}
-        hasActiveFilters={hasActiveFilters}
-      />
+      {isCommandPaletteOpen && (
+        <Suspense fallback={null}>
+          <GlobalCommandPalette
+            isOpen={isCommandPaletteOpen}
+            onClose={() => setIsCommandPaletteOpen(false)}
+            reservations={reservations}
+            spaces={spaces}
+            onSelectReservation={(r) => {
+              setSelectedReservation(r);
+              setIsDetailModalOpen(true);
+            }}
+            onNavigateToView={(view) => setCurrentView(view)}
+            onNewReservation={() => openCreateModal({ date: format(selectedDailyDate || new Date(), 'yyyy-MM-dd') })}
+            onOpenPrintModal={() => setIsGlobalPrintModalOpen(true)}
+            onOpenGmailDispatch={() => openGmailDispatchModal()}
+            onOpenAuditLog={() => {
+              if (!isCoordinatorOrAdmin(currentUser)) {
+                triggerSyncToast('El sistema de restauración de cambios está disponible únicamente para Administradores y Coordinadores.', 'warning');
+                return;
+              }
+              setIsAuditLogOpen(true);
+            }}
+            onOpenImportExport={() => {
+              requireAuth(() => setIsImportExportModalOpen(true), 'gestionar copias de seguridad');
+            }}
+            onNavigateToDate={(date) => {
+              setSelectedDailyDate(date);
+              setCurrentView('daily');
+            }}
+            onFilterBySpace={(spaceName) => {
+              setFilters((prev) => ({ ...prev, espacio: spaceName }));
+              if (!isFilterBarOpen) setIsFilterBarOpen(true);
+            }}
+            onFilterByApplicant={(nameOrRut) => {
+              setFilters((prev) => ({ ...prev, search: nameOrRut }));
+              if (!isFilterBarOpen) setIsFilterBarOpen(true);
+            }}
+            onClearFilters={() => {
+              setFilters({
+                search: '',
+                espacio: '',
+                tipoActividad: '',
+                fechaDesde: '',
+                fechaHasta: '',
+                soloRecurrentes: false,
+                soloImportantes: false,
+                soloConTopamiento: false
+              });
+              triggerSyncToast('Filtros restablecidos', 'info');
+            }}
+            conflictsCount={conflicts.length}
+            hasActiveFilters={hasActiveFilters}
+          />
+        </Suspense>
+      )}
 
       {/* Instant Sync Status Toast */}
       {syncStatusToast && (

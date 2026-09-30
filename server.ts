@@ -769,7 +769,8 @@ function startBackgroundScheduler() {
 // Start Express Application
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // -------------------------------------------------------------
   // API ROUTES (Mounted FIRST before Vite middleware)
@@ -818,6 +819,16 @@ async function startServer() {
 
   // Rate limiting map for email dispatch to prevent open relay abuse
   const emailRateLimit = new Map<string, { count: number; resetAt: number }>();
+
+  // Periodically clean up expired rate limit entries to prevent unbounded memory growth
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of emailRateLimit.entries()) {
+      if (entry.resetAt < now) {
+        emailRateLimit.delete(key);
+      }
+    }
+  }, 5 * 60 * 1000);
 
   function checkEmailRateLimit(ipOrUser: string): boolean {
     const now = Date.now();
