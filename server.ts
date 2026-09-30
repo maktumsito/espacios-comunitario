@@ -18,7 +18,6 @@ import {
   Firestore
 } from 'firebase/firestore';
 
-import { createServer as createViteServer } from 'vite';
 import type { Reservation, SpaceRating } from './src/types';
 import {
   generateDailySchedulePdf,
@@ -1166,28 +1165,46 @@ async function startServer() {
   // -------------------------------------------------------------
   // VITE MIDDLEWARE (Development) or STATIC ASSETS (Production)
   // -------------------------------------------------------------
+  const isCompiledBundle = (typeof __filename !== 'undefined' && __filename.endsWith('server.cjs')) ||
+    (typeof __dirname !== 'undefined' && __dirname.includes('dist'));
+  const isProduction = process.env.NODE_ENV === 'production' || isCompiledBundle;
 
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa'
-    });
-    app.use(vite.middlewares);
+  if (!isProduction) {
+    try {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa'
+      });
+      app.use(vite.middlewares);
+    } catch (viteErr) {
+      console.error('[Server] Error starting Vite middleware in dev mode:', viteErr);
+    }
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'))
+      ? path.join(process.cwd(), 'dist')
+      : (typeof __dirname !== 'undefined' && fs.existsSync(path.join(__dirname, 'index.html')))
+      ? __dirname
+      : path.join(process.cwd(), 'dist');
+
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send('Application build not found. Please run npm run build.');
+      }
     });
   }
 
-  // Start background timer
-  startBackgroundScheduler();
-
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Server] Background server running on http://0.0.0.0:${PORT}`);
+    console.log(`[Server] Background server running on http://0.0.0.0:${PORT} (mode: ${isProduction ? 'production' : 'development'})`);
     console.log(`[Server] Chile Time: ${getSantiagoTime().dateStr} ${getSantiagoTime().timeFormatted}`);
   });
+
+  // Start background timer
+  startBackgroundScheduler();
 }
 
 startServer().catch((err) => {
