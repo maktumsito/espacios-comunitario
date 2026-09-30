@@ -4,12 +4,14 @@ import {
   CheckCircle2,
   Star,
   Smartphone,
-  Check
+  Check,
+  FileSignature
 } from 'lucide-react';
 import { EquipmentItem, Reservation } from '../types';
 import { EquipmentSelector } from './EquipmentSelector';
 import { MAX_ACTIVITY_DESCRIPTION_LENGTH } from '../utils/validationUtils';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
+import { isCommitmentLetterEligible } from '../utils/commitmentLetterPdf';
 
 interface ReservationStep3DetailsProps {
   isWizardMode: boolean;
@@ -125,6 +127,43 @@ export const ReservationStep3Details: React.FC<ReservationStep3DetailsProps> = R
             </option>
           ))}
         </select>
+
+        {/* Activación con 1 Clic para actividades que no son préstamos ni cumpleaños */}
+        {!isCommitmentLetterEligible(formData.tipoActividad, formData.tipoPrestamo) && (
+          <div className="pt-1">
+            <button
+              type="button"
+              id="btn-step3-toggle-carta-compromiso"
+              onClick={() => {
+                const nextVal = !formData.requiereCartaCompromiso;
+                setFormData((prev) => ({
+                  ...prev,
+                  requiereCartaCompromiso: nextVal
+                }));
+              }}
+              className={`w-full p-2.5 rounded-xl border text-xs font-semibold transition flex items-center justify-between cursor-pointer ${
+                formData.requiereCartaCompromiso
+                  ? 'bg-amber-50 border-amber-300 text-amber-950 ring-1 ring-amber-200 shadow-2xs'
+                  : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 hover:border-amber-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <FileSignature className="w-4 h-4 text-amber-600 shrink-0" />
+                <span className="font-bold">Carta de Compromiso:</span>
+                <span className={formData.requiereCartaCompromiso ? 'text-amber-900 font-semibold' : 'text-slate-500 font-normal'}>
+                  {formData.requiereCartaCompromiso ? 'Activada para esta actividad' : 'Desactivada por defecto en este tipo'}
+                </span>
+              </div>
+              <span className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition ${
+                formData.requiereCartaCompromiso
+                  ? 'bg-amber-400 text-amber-950 shadow-2xs'
+                  : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+              }`}>
+                {formData.requiereCartaCompromiso ? '✓ Activada (1 Clic)' : '+ Activar con 1 Clic'}
+              </span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Selector de Equipamiento y Recursos Compartidos */}

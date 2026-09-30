@@ -43,7 +43,7 @@ export function formatFechaConDiaEsp(dateStr?: string): string {
 }
 
 /**
- * Determines if a reservation activity or loan type requires / activates the Carta de Compromiso.
+ * Determines if a reservation activity or loan type requires / activates the Carta de Compromiso by default.
  * Eligible types: únicamente PRÉSTAMO o CUMPLEAÑOS.
  */
 export function isCommitmentLetterEligible(tipoActividad?: string, tipoPrestamo?: string): boolean {
@@ -59,6 +59,18 @@ export function isCommitmentLetterEligible(tipoActividad?: string, tipoPrestamo?
 
   const allowedKeywords = ['prestamo', 'cumplean'];
   return allowedKeywords.some((keyword) => combined.includes(keyword));
+}
+
+/**
+ * Determines if the Carta de Compromiso is active for a reservation,
+ * either by default (préstamo o cumpleaños) or explicitly activated via 1-click (requiereCartaCompromiso = true).
+ */
+export function isCommitmentLetterActive(
+  reserva?: { tipoActividad?: string; tipoPrestamo?: string; requiereCartaCompromiso?: boolean } | null
+): boolean {
+  if (!reserva) return false;
+  if (reserva.requiereCartaCompromiso) return true;
+  return isCommitmentLetterEligible(reserva.tipoActividad, reserva.tipoPrestamo);
 }
 
 export function formatCommitmentFolio(id?: string, dateStr?: string): string {
@@ -79,6 +91,7 @@ export function extractScheduleSlots(
     });
   }
 
+  // 1. Match by serieRecurrente / recurrenteId across all reservations
   const sId = reservation.serieRecurrente || reservation.recurrenteId;
   if (sId && options?.allReservations && options.allReservations.length > 0) {
     const matches = options.allReservations.filter(
@@ -96,6 +109,84 @@ export function extractScheduleSlots(
           if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
           return (a.horaInicio || '').localeCompare(b.horaInicio || '');
         });
+    }
+  }
+
+  // 2. Sibling lookup for single-day multi-space reservations in allReservations
+  if (options?.allReservations && options.allReservations.length > 0 && reservation.fecha) {
+    const respLower = (reservation.responsable || '').trim().toLowerCase();
+    const isMultiSpaceCandidate =
+      reservation.tipoRecurrencia === 'doble_espacio' ||
+      reservation.totalEnSerie === 2 ||
+      (typeof reservation.espacio === 'string' && (reservation.espacio.includes('/') || reservation.espacio.includes(',')));
+
+    if (isMultiSpaceCandidate && respLower) {
+      const siblingMatches = options.allReservations.filter((r) => {
+        if (r.fecha !== reservation.fecha) return false;
+        const rResp = (r.responsable || '').trim().toLowerCase();
+        if (rResp !== respLower) return false;
+        return (
+          r.id === reservation.id ||
+          r.tipoRecurrencia === 'doble_espacio' ||
+          r.totalEnSerie === 2 ||
+          (r.createdAt && reservation.createdAt && Math.abs(new Date(r.createdAt).getTime() - new Date(reservation.createdAt).getTime()) < 60000)
+        );
+      });
+
+      if (siblingMatches.length > 1) {
+        return siblingMatches
+          .map((r) => ({
+            fecha: r.fecha,
+            horaInicio: r.horaInicio || '10:00',
+            horaFin: r.horaFin || '12:00',
+            espacio: r.espacio || 'ESPACIO'
+          }))
+          .sort((a, b) => {
+            if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
+            return (a.horaInicio || '').localeCompare(b.horaInicio || '');
+          });
+      }
+    }
+  }
+
+  // 3. Direct second space fields on the reservation object
+  const anyRes = reservation as any;
+  const rawSecondSpace = anyRes?.secondEspacio || anyRes?.segundoEspacio;
+  if (rawSecondSpace && typeof rawSecondSpace === 'string' && rawSecondSpace.trim()) {
+    const secEsp = rawSecondSpace.trim();
+    const baseEsp = (reservation.espacio || 'ESPACIO').split(/[/,]/)[0].trim();
+    const s1Start = reservation.horaInicio || '10:00';
+    const s1End = reservation.horaFin || '12:00';
+    const s2Start = anyRes?.secondHoraInicio || anyRes?.segundoHoraInicio || reservation.horaFin || '11:00';
+    const s2End = anyRes?.secondHoraFin || anyRes?.segundoHoraFin || '12:00';
+    const dateStr = reservation.fecha || format(new Date(), 'yyyy-MM-dd');
+    return [
+      {
+        fecha: dateStr,
+        horaInicio: s1Start,
+        horaFin: s1End,
+        espacio: baseEsp
+      },
+      {
+        fecha: dateStr,
+        horaInicio: s2Start,
+        horaFin: s2End,
+        espacio: secEsp
+      }
+    ];
+  }
+
+  // 4. Combined space string like "SALA 1 / SALA 2"
+  if (reservation.espacio && (reservation.espacio.includes('/') || reservation.espacio.includes(','))) {
+    const parts = reservation.espacio.split(/[/,]/).map((s) => s.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      const dateStr = reservation.fecha || format(new Date(), 'yyyy-MM-dd');
+      return parts.map((p) => ({
+        fecha: dateStr,
+        horaInicio: reservation.horaInicio || '10:00',
+        horaFin: reservation.horaFin || '12:00',
+        espacio: p
+      }));
     }
   }
 
@@ -145,18 +236,19 @@ export function computeCommitmentDateRangeAndDays(
   const startDate = sortedSlots[0]?.fecha || reservation.fecha || format(new Date(), 'yyyy-MM-dd');
   const endDate = sortedSlots[sortedSlots.length - 1]?.fecha || startDate;
   const isMultiSlot = sortedSlots.length > 1;
+  const isSameDay = startDate === endDate;
 
   const formattedStart = formatDateDDMMYYYY(startDate);
   const formattedEnd = formatDateDDMMYYYY(endDate);
 
-  const formattedRange = isMultiSlot
+  const formattedRange = !isSameDay && isMultiSlot
     ? `Desde el ${formattedStart} hasta el ${formattedEnd}`
     : `Fecha: ${formattedStart}`;
 
   const formattedDateWithDay = formatFechaConDiaEsp(startDate);
 
-  // Group by day of week
-  const dayMap = new Map<number, { dayName: string; dayNum: number; horaInicio: string; horaFin: string; espacio: string; count: number }>();
+  // Group by day of week, preserving all distinct schedule segments per day
+  const dayMap = new Map<number, { dayName: string; dayNum: number; slots: CommitmentScheduleSlot[] }>();
   const spacesSet = new Set<string>();
 
   sortedSlots.forEach((slot) => {
@@ -177,34 +269,77 @@ export function computeCommitmentDateRangeAndDays(
     }
 
     if (slot.espacio) {
-      spacesSet.add(slot.espacio.toUpperCase());
+      const partsEsp = slot.espacio.split(/[/,]/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+      partsEsp.forEach((p) => spacesSet.add(p));
     }
 
     if (!dayMap.has(dayNum)) {
       dayMap.set(dayNum, {
         dayName,
         dayNum,
-        horaInicio: slot.horaInicio,
-        horaFin: slot.horaFin,
-        espacio: slot.espacio,
-        count: 1
+        slots: [slot]
       });
     } else {
       const entry = dayMap.get(dayNum)!;
-      entry.count += 1;
+      entry.slots.push(slot);
     }
   });
+
+  // Also harvest any combined spaces in reservation.espacio
+  if (reservation.espacio) {
+    const partsEsp = reservation.espacio.split(/[/,]/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+    partsEsp.forEach((p) => spacesSet.add(p));
+  }
 
   const sortedDayEntries = Array.from(dayMap.values()).sort((a, b) => a.dayNum - b.dayNum);
 
   let daysAndHoursText = '';
-  if (sortedDayEntries.length > 0) {
+  if (isSameDay && sortedSlots.length > 1) {
+    // Single day with multiple slots / spaces
+    const allSameHours = sortedSlots.every(
+      (s) => s.horaInicio === sortedSlots[0].horaInicio && s.horaFin === sortedSlots[0].horaFin
+    );
+    if (allSameHours) {
+      daysAndHoursText = `${sortedSlots[0].horaInicio} a ${sortedSlots[0].horaFin} hrs.`;
+    } else {
+      daysAndHoursText = sortedSlots
+        .map((s) => `${s.horaInicio} a ${s.horaFin} hrs. (${s.espacio})`)
+        .join(' / ');
+    }
+  } else if (sortedDayEntries.length > 0) {
     daysAndHoursText = sortedDayEntries
-      .map((d) => `${d.dayName} (${d.horaInicio} a ${d.horaFin} hrs.)`)
+      .map((d) => {
+        const uniqueTimesInDay = d.slots.filter(
+          (s, idx, arr) =>
+            arr.findIndex(
+              (x) => x.horaInicio === s.horaInicio && x.horaFin === s.horaFin && x.espacio === s.espacio
+            ) === idx
+        );
+        const allSameInDay = uniqueTimesInDay.every(
+          (s) => s.horaInicio === uniqueTimesInDay[0].horaInicio && s.horaFin === uniqueTimesInDay[0].horaFin
+        );
+        if (allSameInDay && uniqueTimesInDay.length > 0) {
+          return `${d.dayName} (${uniqueTimesInDay[0].horaInicio} a ${uniqueTimesInDay[0].horaFin} hrs.)`;
+        }
+        const timesStr = uniqueTimesInDay
+          .map((s) => `${s.horaInicio} a ${s.horaFin} hrs. (${s.espacio})`)
+          .join(' / ');
+        return `${d.dayName} (${timesStr})`;
+      })
       .join(', ');
   }
 
-  const uniqueSpacesText = Array.from(spacesSet).join(', ') || (reservation.espacio || 'ESPACIO').toUpperCase();
+  const uniqueSpacesText =
+    Array.from(spacesSet).join(' / ') || (reservation.espacio || 'ESPACIO').toUpperCase();
+
+  const daySummaries = sortedDayEntries.map((d) => ({
+    dayName: d.dayName,
+    dayNum: d.dayNum,
+    horaInicio: d.slots[0]?.horaInicio || '10:00',
+    horaFin: d.slots[0]?.horaFin || '12:00',
+    espacio: d.slots.map((s) => s.espacio).join(' / '),
+    count: d.slots.length
+  }));
 
   return {
     isMultiSlot,
@@ -217,7 +352,7 @@ export function computeCommitmentDateRangeAndDays(
     totalSessions: sortedSlots.length,
     daysAndHoursText: daysAndHoursText || `${reservation.horaInicio || '14:00'} a ${reservation.horaFin || '22:00'} hrs.`,
     uniqueSpacesText,
-    daySummaries: sortedDayEntries,
+    daySummaries,
     slots: sortedSlots
   };
 }
@@ -240,10 +375,11 @@ export function computeCommitmentPoint2Details(
   rangeInfo: CommitmentDateRangeSummary
 ): CommitmentPoint2Details {
   const isMultiSlot = rangeInfo.isMultiSlot;
+  const isSameDay = rangeInfo.startDate === rangeInfo.endDate;
 
   // 1. FECHA Y DÍA
   let fechaDiaStr = '';
-  if (isMultiSlot) {
+  if (isMultiSlot && !isSameDay) {
     const sessionsLabel = `${rangeInfo.totalSessions} ${rangeInfo.totalSessions === 1 ? 'SESIÓN' : 'SESIONES'}`;
     fechaDiaStr = `${rangeInfo.formattedRange.toUpperCase()} (${sessionsLabel})`;
   } else {
@@ -253,7 +389,7 @@ export function computeCommitmentPoint2Details(
 
   // 2. HORARIO AUTORIZADO
   let horarioStr = '';
-  if (isMultiSlot) {
+  if (rangeInfo.daysAndHoursText) {
     horarioStr = rangeInfo.daysAndHoursText.toUpperCase();
   } else {
     const hInicio = (reservation.horaInicio || '14:00').trim();
@@ -263,7 +399,7 @@ export function computeCommitmentPoint2Details(
 
   // 3. ESPACIO ASIGNADO
   let espacioStr = '';
-  if (isMultiSlot && rangeInfo.uniqueSpacesText) {
+  if (rangeInfo.uniqueSpacesText) {
     espacioStr = rangeInfo.uniqueSpacesText.trim().toUpperCase();
   } else {
     espacioStr = (reservation.espacio || 'SALA 3').trim().toUpperCase();
@@ -272,7 +408,7 @@ export function computeCommitmentPoint2Details(
   // 4. MODALIDAD / TIPO
   let modalidadStr = '';
   const tipoPrestamoRaw = (reservation.tipoPrestamo || '').trim().toUpperCase();
-  const periodicidad = isMultiSlot ? 'REGULAR / PERIÓDICA' : 'PUNTUAL';
+  const periodicidad = isMultiSlot && !isSameDay ? 'REGULAR / PERIÓDICA' : 'PUNTUAL';
   if (tipoPrestamoRaw) {
     if (
       tipoPrestamoRaw.includes('PUNTUAL') ||
@@ -634,7 +770,11 @@ export async function generateCommitmentLetterPdfDoc(
   // =========================================================================
   // OPTIONAL PAGE 2: MULTI-SLOT CALENDAR ANNEX (IF SERIES HAS MULTIPLE SESSIONS)
   // =========================================================================
-  if (rangeInfo.isMultiSlot && rangeInfo.slots.length > 1) {
+  if (
+    rangeInfo.isMultiSlot &&
+    rangeInfo.slots.length > 1 &&
+    (rangeInfo.startDate !== rangeInfo.endDate || rangeInfo.slots.length > 2)
+  ) {
     doc.addPage([215.9, 330.2], 'portrait');
     let y3 = 10;
 
@@ -712,7 +852,12 @@ export async function downloadCommitmentLetterPdf(
 ): Promise<void> {
   try {
     const doc = await generateCommitmentLetterPdfDoc(reservation, options);
-    const filename = `Carta_Compromiso_${(reservation.espacio || 'Espacio').replace(/\s+/g, '_')}_${reservation.fecha || 'Fecha'}.pdf`;
+    const slots = extractScheduleSlots(reservation, options);
+    const rangeInfo = computeCommitmentDateRangeAndDays(slots, reservation);
+    const spaceLabel = (rangeInfo.uniqueSpacesText || reservation.espacio || 'Espacio')
+      .replace(/[\/\\]/g, '_')
+      .replace(/\s+/g, '_');
+    const filename = `Carta_Compromiso_${spaceLabel}_${reservation.fecha || 'Fecha'}.pdf`;
     doc.save(filename);
   } catch (err) {
     console.error('Error generating and downloading Commitment Letter PDF:', err);

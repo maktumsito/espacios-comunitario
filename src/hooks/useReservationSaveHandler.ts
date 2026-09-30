@@ -881,15 +881,16 @@ export function useReservationSaveHandler({
       rut: effectiveFormData.rut || '',
       domicilio: effectiveFormData.domicilio || '',
       importante: effectiveFormData.importante || 'No',
-      requiereCartaCompromiso: isCommitmentLetterEligible(
-        effectiveFormData.tipoActividad,
-        effectiveFormData.tipoPrestamo
-      ),
+      requiereCartaCompromiso:
+        isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) ||
+        Boolean(effectiveFormData.requiereCartaCompromiso),
       descargarCartaAlCrear:
-        isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) &&
+        (isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) ||
+          Boolean(effectiveFormData.requiereCartaCompromiso)) &&
         descargarCartaAlCrear,
       cartaCompromisoDescargada:
-        isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) &&
+        (isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) ||
+          Boolean(effectiveFormData.requiereCartaCompromiso)) &&
         descargarCartaAlCrear
           ? true
           : effectiveFormData.cartaCompromisoDescargada || false,
@@ -909,14 +910,24 @@ export function useReservationSaveHandler({
       updatedAt: new Date().toISOString()
     };
 
-    // Auto download Commitment Letter PDF asynchronously if eligible and ticked
-    if (
-      isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) &&
-      descargarCartaAlCrear
-    ) {
+    // Auto download Commitment Letter PDF asynchronously if eligible or activated and ticked
+    const isLetterActiveForDownload =
+      isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) ||
+      Boolean(effectiveFormData.requiereCartaCompromiso);
+
+    if (isLetterActiveForDownload && descargarCartaAlCrear) {
       setTimeout(async () => {
         try {
-          await downloadCommitmentLetterPdf(finalReserva, {
+          const letterReserva: Reservation = {
+            ...finalReserva,
+            espacio:
+              enableSingleSecondSpace &&
+              effectiveSecondSpace &&
+              effectiveSecondSpace.trim().toUpperCase() !== normalizedSpace.trim().toUpperCase()
+                ? `${normalizedSpace} / ${normalizeSpaceName(effectiveSecondSpace)}`
+                : finalReserva.espacio
+          };
+          await downloadCommitmentLetterPdf(letterReserva, {
             allReservations,
             seriesScheduleItems: effectiveSeriesSlotsForLetter
           });
@@ -1010,10 +1021,9 @@ export function useReservationSaveHandler({
               effectiveFormData.comentarios !== undefined ? effectiveFormData.comentarios : orig.comentarios,
             rut: effectiveFormData.rut !== undefined ? effectiveFormData.rut : orig.rut,
             domicilio: effectiveFormData.domicilio !== undefined ? effectiveFormData.domicilio : orig.domicilio,
-            requiereCartaCompromiso: isCommitmentLetterEligible(
-              effectiveFormData.tipoActividad,
-              effectiveFormData.tipoPrestamo
-            ),
+            requiereCartaCompromiso:
+              isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) ||
+              Boolean(effectiveFormData.requiereCartaCompromiso),
             realizada: effectiveFormData.realizada || orig.realizada,
             terminaDiaSiguiente: Boolean(effectiveFormData.terminaDiaSiguiente),
             horarioExtendidoAutorizado: loanScheduleCheck.requiresAuthorization

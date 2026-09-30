@@ -5,7 +5,7 @@ import { SPACES_LIST } from '../data/spacesData';
 import { getChileanHolidayInfo, ChileanHoliday } from '../utils/holidayUtils';
 import { useReservationDateIndex } from '../utils/reservationIndex';
 import { getActiveWindowStartDate } from '../services/reservationService';
-import { getReservationTypeVisual, RESERVATION_TYPE_LEGEND } from '../utils/reservationVisuals';
+import { getReservationTypeVisual, RESERVATION_TYPE_LEGEND, formatDisplayTitle } from '../utils/reservationVisuals';
 import {
   ChevronLeft,
   ChevronRight,
@@ -191,6 +191,7 @@ const CalendarEventTag = memo<CalendarEventTagProps>(({
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const isCancelled = reservation.estado === 'cancelada';
+  const displayTitle = formatDisplayTitle(reservation.descripcion || reservation.tipoActividad);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -203,20 +204,20 @@ const CalendarEventTag = memo<CalendarEventTagProps>(({
       onClick={handleClick}
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
-      aria-label={`Actividad: ${reservation.descripcion || reservation.tipoActividad} a las ${reservation.horaInicio} en ${reservation.espacio}`}
+      aria-label={`Actividad: ${displayTitle} a las ${reservation.horaInicio} en ${reservation.espacio}`}
       className={`w-full text-left relative text-[10px] px-1.5 py-0.5 rounded truncate font-medium text-white flex items-center space-x-1 shadow-xs transition hover:opacity-90 hover:scale-[1.02] cursor-pointer border-0 ${
         isCancelled ? 'opacity-50 line-through grayscale-[50%]' : ''
       }`}
       style={{ backgroundColor: isCancelled ? '#64748b' : color }}
     >
-      <span className="font-mono text-[9px] opacity-90 shrink-0">{reservation.horaInicio}</span>
+      <span className="font-mono tabular-nums text-[9px] opacity-90 shrink-0">{reservation.horaInicio}</span>
       {isCancelled && (
         <span className="shrink-0 text-[9px] font-bold text-rose-200" title="Reserva Cancelada">🚫</span>
       )}
       {reservation.solicitudEliminacion && !isCancelled && (
         <span className="shrink-0 text-[9px]" title="Solicitud de eliminación en espera">⏳</span>
       )}
-      <span className="truncate">{reservation.descripcion || reservation.tipoActividad}</span>
+      <span className="truncate">{displayTitle}</span>
 
       {/* Floating Detailed Hover Tooltip */}
       {showTooltip && (
@@ -232,7 +233,7 @@ const CalendarEventTag = memo<CalendarEventTagProps>(({
             </div>
           )}
           <div className="font-bold text-sm text-white leading-tight">
-            {reservation.descripcion || reservation.tipoActividad}
+            {displayTitle}
           </div>
           <div className="text-[11px] text-blue-300 font-mono flex items-center gap-1">
             <Clock className="w-3 h-3 text-blue-400" />
@@ -420,13 +421,15 @@ const AgendaReservationCard = memo<AgendaReservationCardProps>(({
   const isImportant = reservation.importante === 'Sí';
   const isCancelled = reservation.estado === 'cancelada';
   const typeVisual = getReservationTypeVisual(reservation);
+  const displayTitle = formatDisplayTitle(reservation.descripcion || reservation.tipoActividad);
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      aria-label={`Ver detalles de reserva: ${reservation.descripcion || reservation.tipoActividad}, ${reservation.horaInicio} a ${reservation.horaFin} en ${reservation.espacio}, solicitante ${reservation.responsable}`}
-      className={`w-full text-left bg-slate-50 hover:bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-3 space-y-2 transition-all shadow-xs cursor-pointer relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-blue-500 focus:z-10 ${
+      aria-label={`Ver detalles de reserva: ${displayTitle}, ${reservation.horaInicio} a ${reservation.horaFin} en ${reservation.espacio}, solicitante ${reservation.responsable}`}
+      title={`${displayTitle}\nTipo de actividad: ${reservation.tipoActividad || typeVisual.label}\nResponsable: ${reservation.responsable || 'No especificado'}\nHorario: ${reservation.horaInicio} – ${reservation.horaFin}\nEspacio: ${reservation.espacio}${reservation.telefonoContacto ? `\nTeléfono: ${reservation.telefonoContacto}` : ''}\n\n(Haz clic para abrir detalles completos)`}
+      className={`w-full text-left bg-slate-50 hover:bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-2.5 sm:p-3 space-y-1.5 transition-all shadow-xs cursor-pointer relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-blue-500 focus:z-10 ${
         isCancelled ? 'opacity-60 bg-slate-100/80' : ''
       }`}
     >
@@ -436,13 +439,13 @@ const AgendaReservationCard = memo<AgendaReservationCardProps>(({
       />
 
       {/* Top line: Time & Badge */}
-      <div className="flex items-center justify-between pl-1">
-        <div className={`flex items-center space-x-1 text-xs font-mono font-bold ${isCancelled ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+      <div className="flex items-center justify-between pl-1 gap-1">
+        <div className={`flex items-center space-x-1 text-xs font-mono font-bold shrink-0 ${isCancelled ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
           <Clock className="w-3 h-3 text-blue-600" />
-          <span>{reservation.horaInicio} - {reservation.horaFin}</span>
+          <span className="tabular-nums">{reservation.horaInicio} - {reservation.horaFin}</span>
         </div>
 
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-1 shrink-0">
           {isCancelled && (
             <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-0.5">
               <span>🚫</span>
@@ -476,24 +479,17 @@ const AgendaReservationCard = memo<AgendaReservationCardProps>(({
       </div>
 
       {/* Activity Name */}
-      <div className="pl-1">
-        <h4 className={`text-xs font-bold transition truncate ${isCancelled ? 'text-slate-500 line-through' : 'text-slate-900 group-hover:text-blue-700'}`}>
-          {reservation.descripcion || reservation.tipoActividad}
+      <div className="pl-1 min-w-0">
+        <h4 className={`text-xs font-bold transition truncate leading-snug ${isCancelled ? 'text-slate-500 line-through' : 'text-slate-900 group-hover:text-blue-700'}`}>
+          {displayTitle}
         </h4>
-        <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${typeVisual.bgClass} ${typeVisual.softTextClass} border ${typeVisual.borderClass}`}>
-          {typeVisual.label}
-        </span>
       </div>
 
-      {/* Space & Responsible */}
-      <div className="pl-1 pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-600">
-        <div className="flex items-center space-x-1 truncate font-medium text-slate-800 max-w-[120px]">
+      {/* Space */}
+      <div className="pl-1 pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-600 gap-2 min-w-0">
+        <div className="flex items-center space-x-1 min-w-0 flex-1 font-medium text-slate-800">
           <MapPin className="w-3 h-3 shrink-0" style={{ color: spaceColor }} />
           <span className="truncate">{reservation.espacio}</span>
-        </div>
-        <div className="flex items-center space-x-1 text-slate-500 truncate max-w-[100px]">
-          <User className="w-2.5 h-2.5 text-slate-400 shrink-0" />
-          <span className="truncate">{reservation.responsable}</span>
         </div>
       </div>
     </button>

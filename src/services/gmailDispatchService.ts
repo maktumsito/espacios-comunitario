@@ -377,12 +377,36 @@ export const WEEKDAY_LABELS: Record<number, { name: string; short: string }> = {
 };
 
 /**
+ * Determines whether a reservation corresponds to a space or equipment loan ("Préstamo")
+ */
+export function isLoanReservation(reserva?: { tipoPrestamo?: string; tipoActividad?: string } | null): boolean {
+  if (!reserva) return false;
+  if (reserva.tipoPrestamo && reserva.tipoPrestamo.trim() !== '') return true;
+  if (reserva.tipoActividad && /pr[eé]stamo/i.test(reserva.tipoActividad)) return true;
+  return false;
+}
+
+/**
+ * Filter mode for email dispatch:
+ * - 'solo_prestamos': strictly only loan reservations
+ * - 'prestamos_y_seleccionadas': all loans plus manually selected activity types
+ * - 'actividades_seleccionadas': strictly only the selected activity types
+ * - 'todas': all reservations with no filter
+ */
+export type EmailDispatchFilterMode =
+  | 'solo_prestamos'
+  | 'prestamos_y_seleccionadas'
+  | 'actividades_seleccionadas'
+  | 'todas';
+
+/**
  * Configuration schema for Gmail Dispatch stored in Firestore
  */
 export interface GmailDispatchConfig {
   senderEmail: string;
   defaultRecipients: string[];
   selectedActivityTypes: string[]; // ['ALL'] or specific names
+  dispatchFilterMode?: EmailDispatchFilterMode; // Filtro: solo préstamos o actividades seleccionadas
   subjectTemplate: string;
   customHeaderNote?: string;
   includeObservations: boolean;
@@ -396,6 +420,7 @@ export const DEFAULT_GMAIL_DISPATCH_CONFIG: GmailDispatchConfig = {
   senderEmail: DEFAULT_GMAIL_SENDER,
   defaultRecipients: ['cristianshute@gmail.com'],
   selectedActivityTypes: ['ALL'],
+  dispatchFilterMode: 'solo_prestamos', // El correo es solo para préstamos o actividades seleccionadas
   subjectTemplate: 'Actividades Comunitarias - {FECHAS}',
   customHeaderNote: 'Adjuntamos el detalle consolidado de actividades y uso de espacios programados.',
   includeObservations: true,

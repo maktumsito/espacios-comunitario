@@ -49,7 +49,15 @@ export interface UseReservationModalsReturn {
   setGlobalPrintInitialDate: (date: string | undefined) => void;
   gmailDispatchInitialDate: string | undefined;
   setGmailDispatchInitialDate: (date: string | undefined) => void;
-  openGmailDispatchModal: (initialDate?: string) => void;
+  gmailDispatchFilterMode: 'solo_prestamos' | 'prestamos_y_seleccionadas' | 'actividades_seleccionadas' | 'todas' | undefined;
+  setGmailDispatchFilterMode: (mode: 'solo_prestamos' | 'prestamos_y_seleccionadas' | 'actividades_seleccionadas' | 'todas' | undefined) => void;
+  gmailDispatchReservationId: string | undefined;
+  setGmailDispatchReservationId: (id: string | undefined) => void;
+  openGmailDispatchModal: (
+    initialDate?: string,
+    filterMode?: 'solo_prestamos' | 'prestamos_y_seleccionadas' | 'actividades_seleccionadas' | 'todas',
+    reservationId?: string
+  ) => void;
 
   // Conflict report dialog state
   conflictReportData: {
@@ -126,6 +134,10 @@ export function useReservationModals(): UseReservationModalsReturn {
   const [passwordTargetUser, setPasswordTargetUser] = useState<AuthUser | null>(null);
   const [globalPrintInitialDate, setGlobalPrintInitialDate] = useState<string | undefined>(undefined);
   const [gmailDispatchInitialDate, setGmailDispatchInitialDate] = useState<string | undefined>(undefined);
+  const [gmailDispatchFilterMode, setGmailDispatchFilterMode] = useState<
+    'solo_prestamos' | 'prestamos_y_seleccionadas' | 'actividades_seleccionadas' | 'todas' | undefined
+  >(undefined);
+  const [gmailDispatchReservationId, setGmailDispatchReservationId] = useState<string | undefined>(undefined);
 
   // Conflicts report dialog
   const [conflictReportData, setConflictReportData] = useState<{
@@ -145,8 +157,8 @@ export function useReservationModals(): UseReservationModalsReturn {
   // Modal prefills
   const [prefillDate, setPrefillDate] = useState<string>('');
   const [prefillSpace, setPrefillSpace] = useState<string>('');
-  const [prefillStartTime, setPrefillStartTime] = useState<string>('10:00');
-  const [prefillEndTime, setPrefillEndTime] = useState<string>('11:00');
+  const [prefillStartTime, setPrefillStartTime] = useState<string>('08:30');
+  const [prefillEndTime, setPrefillEndTime] = useState<string>('09:30');
   const [prefillResponsable, setPrefillResponsable] = useState<string>('');
   const [prefillRut, setPrefillRut] = useState<string>('');
   const [prefillPhone, setPrefillPhone] = useState<string>('');
@@ -158,8 +170,8 @@ export function useReservationModals(): UseReservationModalsReturn {
     setIsDuplicating(false);
     setPrefillDate('');
     setPrefillSpace('');
-    setPrefillStartTime('10:00');
-    setPrefillEndTime('11:00');
+    setPrefillStartTime('08:30');
+    setPrefillEndTime('09:30');
     setPrefillResponsable('');
     setPrefillRut('');
     setPrefillPhone('');
@@ -180,8 +192,11 @@ export function useReservationModals(): UseReservationModalsReturn {
     setIsDuplicating(false);
     setPrefillDate(params?.date || '');
     setPrefillSpace(params?.space || '');
-    setPrefillStartTime(params?.startTime || '10:00');
-    setPrefillEndTime(params?.endTime || '11:00');
+    // Default early start time (< 08:30) to 08:30; manual entry if earlier
+    const rawStart = params?.startTime || '08:30';
+    const isEarly = rawStart < '08:30';
+    setPrefillStartTime(isEarly ? '08:30' : rawStart);
+    setPrefillEndTime(params?.endTime || (isEarly ? '09:30' : '09:30'));
     setPrefillResponsable(params?.responsable || '');
     setPrefillRut(params?.rut || '');
     setPrefillPhone(params?.phone || '');
@@ -189,8 +204,14 @@ export function useReservationModals(): UseReservationModalsReturn {
     setIsReservationModalOpen(true);
   }, []);
 
-  const openGmailDispatchModal = useCallback((initialDate?: string) => {
+  const openGmailDispatchModal = useCallback((
+    initialDate?: string,
+    filterMode?: 'solo_prestamos' | 'prestamos_y_seleccionadas' | 'actividades_seleccionadas' | 'todas',
+    reservationId?: string
+  ) => {
     setGmailDispatchInitialDate(initialDate);
+    setGmailDispatchFilterMode(filterMode);
+    setGmailDispatchReservationId(reservationId);
     setIsGmailDispatchModalOpen(true);
   }, []);
 
@@ -237,6 +258,10 @@ export function useReservationModals(): UseReservationModalsReturn {
     setGlobalPrintInitialDate,
     gmailDispatchInitialDate,
     setGmailDispatchInitialDate,
+    gmailDispatchFilterMode,
+    setGmailDispatchFilterMode,
+    gmailDispatchReservationId,
+    setGmailDispatchReservationId,
     openGmailDispatchModal,
     conflictReportData,
     setConflictReportData,

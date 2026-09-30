@@ -381,6 +381,10 @@ export const PrintScheduleModal: React.FC<PrintScheduleModalProps> = ({
       page-break-inside: avoid;
     }
     @media print {
+      @page {
+        size: 8.5in 13in;
+        margin: 10mm;
+      }
       .no-print, .print-toolbar {
         display: none !important;
       }
@@ -403,13 +407,15 @@ export const PrintScheduleModal: React.FC<PrintScheduleModalProps> = ({
   // Helper to build jsPDF Document
   const buildPdfDocument = async () => {
     const { jsPDF, autoTable } = await loadPdfLibraries();
+    // Hoja 8.5 x 13 pulgadas = 215.9 mm x 330.2 mm (Oficio)
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
-      format: 'a4'
+      format: [215.9, 330.2]
     });
 
-    const pageWidth = doc.internal.pageSize.getWidth(); // ~210 mm
+    const pageWidth = doc.internal.pageSize.getWidth(); // ~215.9 mm
+    const pageHeight = doc.internal.pageSize.getHeight(); // ~330.2 mm
     const margin = 14;
     let currentY = 18;
 
@@ -520,7 +526,7 @@ export const PrintScheduleModal: React.FC<PrintScheduleModalProps> = ({
       doc.text('No hay actividades registradas para este día en los espacios seleccionados.', margin, currentY + 4);
     } else {
       for (const { spaceName, bookings } of visibleSpaces) {
-        if (currentY > 260) {
+        if (currentY > pageHeight - 42) {
           doc.addPage();
           currentY = 18;
         }
@@ -596,9 +602,9 @@ export const PrintScheduleModal: React.FC<PrintScheduleModalProps> = ({
       doc.setFontSize(8);
       doc.setTextColor(148, 163, 184); // #94a3b8
       doc.text(
-        `Centro Comunitario Diaguitas - Sistema de Reservas   |   Página ${i} de ${totalPages}`,
+        `Centro Comunitario Diaguitas - Planilla Oficial de Actividades   |   Papel: 8.5" × 13" (Oficio)   |   Página ${i} de ${totalPages}`,
         pageWidth / 2,
-        290,
+        pageHeight - 8,
         { align: 'center' }
       );
     }

@@ -132,6 +132,8 @@ export interface AppModalsContainerProps {
   // Gmail Dispatch
   isGmailDispatchModalOpen: boolean;
   gmailDispatchInitialDate?: string;
+  gmailDispatchFilterMode?: 'solo_prestamos' | 'prestamos_y_seleccionadas' | 'actividades_seleccionadas' | 'todas';
+  gmailDispatchReservationId?: string;
   onCloseGmailDispatch: () => void;
 }
 
@@ -198,6 +200,8 @@ export const AppModalsContainer: React.FC<AppModalsContainerProps> = ({
 
   isGmailDispatchModalOpen,
   gmailDispatchInitialDate,
+  gmailDispatchFilterMode,
+  gmailDispatchReservationId,
   onCloseGmailDispatch
 }) => {
   return (
@@ -350,6 +354,8 @@ export const AppModalsContainer: React.FC<AppModalsContainerProps> = ({
             availableActivityTypes={activityTypes}
             availableLoanTypes={loanTypes}
             initialDate={gmailDispatchInitialDate}
+            initialFilterMode={gmailDispatchFilterMode}
+            initialReservationId={gmailDispatchReservationId}
             currentUser={currentUser}
           />
         </Suspense>

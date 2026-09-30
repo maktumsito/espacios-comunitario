@@ -340,19 +340,64 @@ async function logDispatchToFirestore(data: Record<string, any>) {
   }
 }
 
+// Helper for transient-resilient Firestore document reads with automatic retry
+async function getDocWithRetry(docRef: any, maxRetries = 2, delayMs = 1500) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await getDoc(docRef);
+    } catch (err: any) {
+      const isTransient = err?.code === 'unavailable' ||
+        err?.code === 'deadline-exceeded' ||
+        (err?.message && (err.message.includes('temporarily unavailable') || err.message.includes('unavailable')));
+      if (isTransient && attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+  return await getDoc(docRef);
+}
+
+// Helper for transient-resilient Firestore collection queries with automatic retry
+async function getDocsWithRetry(colRef: any, maxRetries = 2, delayMs = 1500) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await getDocs(colRef);
+    } catch (err: any) {
+      const isTransient = err?.code === 'unavailable' ||
+        err?.code === 'deadline-exceeded' ||
+        (err?.message && (err.message.includes('temporarily unavailable') || err.message.includes('unavailable')));
+      if (isTransient && attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+  return await getDocs(colRef);
+}
+
 // Fetch all reservations from Firestore
 async function fetchAllReservationsServer(): Promise<Reservation[]> {
   const db = getServerDb();
   if (!db) return [];
   try {
-    const snap = await getDocs(collection(db, 'reservas'));
+    const snap = await getDocsWithRetry(collection(db, 'reservas'));
     const list: Reservation[] = [];
-    snap.forEach((d) => {
-      list.push({ id: d.id, ...d.data() } as Reservation);
+    snap.forEach((d: any) => {
+      list.push({ id: d.id, ...(d.data() as any) } as Reservation);
     });
     return list;
-  } catch (e) {
-    console.error('[Server] Error fetching reservations:', e);
+  } catch (e: any) {
+    const isTransient = e?.code === 'unavailable' ||
+      e?.code === 'deadline-exceeded' ||
+      (e?.message && (e.message.includes('temporarily unavailable') || e.message.includes('unavailable')));
+    if (isTransient) {
+      console.warn('[Server] Firestore temporalmente no disponible al obtener reservas (se reintentará automáticamente):', e?.message || e);
+    } else {
+      console.error('[Server] Error fetching reservations:', e);
+    }
     return [];
   }
 }
@@ -362,14 +407,21 @@ async function fetchAllRatingsServer(): Promise<SpaceRating[]> {
   const db = getServerDb();
   if (!db) return [];
   try {
-    const snap = await getDocs(collection(db, 'calificaciones_espacios'));
+    const snap = await getDocsWithRetry(collection(db, 'calificaciones_espacios'));
     const list: SpaceRating[] = [];
-    snap.forEach((d) => {
-      list.push({ id: d.id, ...d.data() } as SpaceRating);
+    snap.forEach((d: any) => {
+      list.push({ id: d.id, ...(d.data() as any) } as SpaceRating);
     });
     return list;
-  } catch (e) {
-    console.error('[Server] Error fetching ratings:', e);
+  } catch (e: any) {
+    const isTransient = e?.code === 'unavailable' ||
+      e?.code === 'deadline-exceeded' ||
+      (e?.message && (e.message.includes('temporarily unavailable') || e.message.includes('unavailable')));
+    if (isTransient) {
+      console.warn('[Server] Firestore temporalmente no disponible al obtener calificaciones:', e?.message || e);
+    } else {
+      console.error('[Server] Error fetching ratings:', e);
+    }
     return [];
   }
 }
@@ -390,7 +442,7 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
   }
 
   try {
-    const configSnap = await getDoc(doc(db, 'configuracion_sistema', 'gmail_dispatch_config'));
+    const configSnap = await getDocWithRetry(doc(db, 'configuracion_sistema', 'gmail_dispatch_config'));
     const configRaw = configSnap.exists() ? (configSnap.data() as any) : null;
     const config = configRaw?.data || configRaw;
     const schedule = config?.schedule;
@@ -441,21 +493,48 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
       return { success: false, message: 'No hay fechas de actividades calculadas para despachar en este ciclo.' };
     }
 
-    // 6. Fetch reservations from Firestore
+    // 6. Fetch reservations from Firestore and filter according to configured dispatchFilterMode
     const allReservations = await fetchAllReservationsServer();
     const activeReservations = allReservations.filter(
       r => r.estado !== 'Cancelada' && r.estado !== 'Rechazada'
     );
+
+    const filterMode = config?.dispatchFilterMode || 'solo_prestamos';
+    const isLoan = (r: any) =>
+      Boolean(r?.tipoPrestamo && String(r.tipoPrestamo).trim() !== '') ||
+      Boolean(r?.tipoActividad && /pr[eé]stamo/i.test(String(r.tipoActividad)));
+
+    const emailReservations = activeReservations.filter(r => {
+      if (filterMode === 'solo_prestamos') {
+        return isLoan(r);
+      }
+      if (filterMode === 'prestamos_y_seleccionadas') {
+        if (isLoan(r)) return true;
+        if (Array.isArray(config?.selectedActivityTypes) && !config.selectedActivityTypes.includes('ALL')) {
+          return config.selectedActivityTypes.includes(r.tipoActividad);
+        }
+        return false;
+      }
+      if (filterMode === 'actividades_seleccionadas') {
+        if (Array.isArray(config?.selectedActivityTypes) && !config.selectedActivityTypes.includes('ALL')) {
+          return config.selectedActivityTypes.includes(r.tipoActividad);
+        }
+        return true;
+      }
+      return true; // 'todas'
+    });
 
     // 7. Generate ONE printable PDF sheet for EACH day to be dispatched
     const attachments: EmailAttachmentServer[] = [];
     for (const dateStr of activityDates) {
       const doc = await generateDailySchedulePdf({
         dateStr,
-        reservations: activeReservations,
+        reservations: emailReservations,
         onlyOccupiedSpaces: true,
         include3DaysImportant: true,
-        generatedBy: 'Despacho Automático Diaguitas'
+        generatedBy: filterMode === 'solo_prestamos'
+          ? 'Despacho Oficial de Préstamos Diaguitas'
+          : 'Despacho Automático Diaguitas'
       });
       const filename = getDailySchedulePdfFilename(dateStr);
       const content = docToBase64(doc);
@@ -472,9 +551,17 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
       : ['cristianshute@gmail.com'];
 
     const formattedDatesList = activityDates.map(formatDateDDMMYYYY).join(', ');
-    const subject = `[Planillas Oficiales] Cartelera de Actividades (${formattedDatesList}) - Centro Comunitario Diaguitas`;
+    const filterDescription = filterMode === 'solo_prestamos'
+      ? 'Préstamos de Espacios'
+      : filterMode === 'prestamos_y_seleccionadas'
+      ? 'Préstamos y Actividades Seleccionadas'
+      : filterMode === 'actividades_seleccionadas'
+      ? 'Actividades Seleccionadas'
+      : 'Cartelera de Actividades';
 
-    const totalActivities = activeReservations.filter(r => r.fecha && activityDates.includes(r.fecha)).length;
+    const subject = `[Planillas Oficiales - ${filterDescription}] (${formattedDatesList}) - Centro Comunitario Diaguitas`;
+
+    const totalActivities = emailReservations.filter(r => r.fecha && activityDates.includes(r.fecha)).length;
 
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; color: #1e293b; max-width: 680px; margin: 0 auto; line-height: 1.5;">
@@ -486,7 +573,7 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
         <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; background-color: #ffffff; border-radius: 0 0 12px 12px;">
           <p style="font-size: 14px; margin-top: 0;">Estimados,</p>
           <p style="font-size: 13px; color: #334155;">
-            Se remite el consolidado de actividades programadas para las siguientes fechas: <strong>${formattedDatesList}</strong> (Total: <strong>${totalActivities} actividad(es)</strong> coordinadas).
+            Se remite el consolidado de actividades programadas para las siguientes fechas: <strong>${formattedDatesList}</strong> (Total: <strong>${totalActivities} actividad(es) / préstamo(s)</strong> coordinados según filtro: <em>${filterDescription}</em>).
           </p>
 
           <div style="margin: 20px 0; padding: 16px; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
@@ -497,7 +584,7 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
               Con el fin de facilitar la impresión diaria en portería y administración, se ha generado y adjuntado <strong>una planilla PDF separada por cada día</strong>:
             </p>
             <ul style="margin: 0; padding-left: 20px; font-size: 12px; color: #166534;">
-              ${attachments.map(att => `<li style="margin-bottom: 4px;"><strong>${att.filename}</strong> (formato vectorizado A4 listo para imprimir)</li>`).join('')}
+              ${attachments.map(att => `<li style="margin-bottom: 4px;"><strong>${att.filename}</strong> (formato vectorizado en hoja de 8.5" × 13" listo para imprimir)</li>`).join('')}
             </ul>
           </div>
 
@@ -566,8 +653,23 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
   } catch (err: any) {
     const isPermissionError = err?.code === 'permission-denied' ||
       (err?.message && (err.message.includes('permissions') || err.message.includes('Missing or insufficient')));
+    const isTransientUnavailable = err?.code === 'unavailable' ||
+      err?.code === 'deadline-exceeded' ||
+      err?.code === 'resource-exhausted' ||
+      (err?.message && (
+        err.message.includes('temporarily unavailable') ||
+        err.message.includes('unavailable') ||
+        err.message.includes('deadline-exceeded') ||
+        err.message.includes('network') ||
+        err.message.includes('fetch failed') ||
+        err.message.includes('ECONNRESET') ||
+        err.message.includes('ETIMEDOUT')
+      ));
+
     if (isPermissionError) {
       console.warn('[Server Scheduler] Firestore rules/permission check: esperando sincronización de permisos o credenciales para despacho programado.');
+    } else if (isTransientUnavailable) {
+      console.warn('[Server Scheduler] Servicio Firestore temporalmente no disponible (se reintentará automáticamente en el próximo ciclo programado):', err?.message || String(err));
     } else {
       console.error('[Server Scheduler] Error executing scheduled dispatch:', err);
     }
@@ -638,15 +740,15 @@ function startBackgroundScheduler() {
 
   console.log('[Background Scheduler] Service started. Checking schedule every 60 seconds (America/Santiago)...');
 
-  // Check immediately on startup (after 5 seconds warm-up)
+  // Check immediately on startup (after 10 seconds warm-up to ensure Firestore connection is active)
   setTimeout(() => {
     executeScheduledDispatchServer(false).catch(err => {
-      console.warn('[Background Scheduler] Initial check notice:', err);
+      console.warn('[Background Scheduler] Initial check notice:', err?.message || err);
     });
     purgeExpiredSlotsServer(30).catch(err => {
-      console.warn('[Background Scheduler] Initial slots cleanup notice:', err);
+      console.warn('[Background Scheduler] Initial slots cleanup notice:', err?.message || err);
     });
-  }, 5000);
+  }, 10000);
 
   // Periodic check every 60 seconds
   schedulerInterval = setInterval(() => {
@@ -847,15 +949,35 @@ async function startServer() {
       const activityDates = calculateActivityDatesForDispatchDate(santiago.dateStr, alcance, specificDays);
 
       const allReservations = await fetchAllReservationsServer();
+      const filterMode = config?.dispatchFilterMode || 'solo_prestamos';
+      const isLoan = (r: any) =>
+        Boolean(r?.tipoPrestamo && String(r.tipoPrestamo).trim() !== '') ||
+        Boolean(r?.tipoActividad && /pr[eé]stamo/i.test(String(r.tipoActividad)));
+
+      const emailReservations = allReservations.filter(r => {
+        if (r.estado === 'Cancelada' || r.estado === 'Rechazada') return false;
+        if (filterMode === 'solo_prestamos') return isLoan(r);
+        if (filterMode === 'prestamos_y_seleccionadas') {
+          return isLoan(r) || (Array.isArray(config?.selectedActivityTypes) && config.selectedActivityTypes.includes(r.tipoActividad));
+        }
+        if (filterMode === 'actividades_seleccionadas') {
+          return Array.isArray(config?.selectedActivityTypes) && config.selectedActivityTypes.includes(r.tipoActividad);
+        }
+        return true;
+      });
+
       const dailySummaries = activityDates.map(dateStr => {
-        const count = allReservations.filter(r => r.fecha === dateStr && r.estado !== 'Cancelada' && r.estado !== 'Rechazada').length;
+        const count = emailReservations.filter(r => r.fecha === dateStr).length;
+        const totalRaw = allReservations.filter(r => r.fecha === dateStr && r.estado !== 'Cancelada' && r.estado !== 'Rechazada').length;
+        const loansCount = allReservations.filter(r => r.fecha === dateStr && r.estado !== 'Cancelada' && r.estado !== 'Rechazada' && isLoan(r)).length;
         const filename = getDailySchedulePdfFilename(dateStr);
-        return { dateStr, formattedDate: formatDateDDMMYYYY(dateStr), filename, count };
+        return { dateStr, formattedDate: formatDateDDMMYYYY(dateStr), filename, count, totalRaw, loansCount, filterMode };
       });
 
       res.json({
         santiagoTime: `${santiago.dateStr} ${santiago.timeFormatted}`,
         schedule,
+        filterMode,
         recipients: config?.defaultRecipients || ['cristianshute@gmail.com'],
         activityDates,
         dailySummaries,

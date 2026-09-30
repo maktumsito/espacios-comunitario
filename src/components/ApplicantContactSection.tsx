@@ -267,8 +267,78 @@ export const ApplicantContactSection: React.FC<ApplicantContactSectionProps> = (
         </div>
       </div>
 
-      {/* Ticket: Descarga Automática de Carta de Compromiso & Gestión */}
-      {isCommitmentLetterEligible(formData.tipoActividad, formData.tipoPrestamo) && (
+      {/* Carta de Compromiso: Activación con 1 Clic para actividades que no son cumpleaños ni préstamos */}
+      {!isCommitmentLetterEligible(formData.tipoActividad, formData.tipoPrestamo) && (
+        <div className="space-y-2 pt-1">
+          <div
+            id="card-toggle-carta-compromiso"
+            onClick={() => {
+              const nextVal = !formData.requiereCartaCompromiso;
+              setFormData((prev) => ({
+                ...prev,
+                requiereCartaCompromiso: nextVal
+              }));
+              if (nextVal) {
+                setDescargarCartaAlCrear(true);
+              }
+            }}
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer select-none flex items-center justify-between gap-3 ${
+              formData.requiereCartaCompromiso
+                ? 'bg-amber-500/10 border-amber-400 ring-2 ring-amber-300/60 shadow-xs'
+                : 'bg-white hover:bg-amber-50/40 border-slate-200 hover:border-amber-300 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <input
+                id="toggle-activar-carta-compromiso"
+                type="checkbox"
+                checked={Boolean(formData.requiereCartaCompromiso)}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setFormData((prev) => ({
+                    ...prev,
+                    requiereCartaCompromiso: checked
+                  }));
+                  if (checked) {
+                    setDescargarCartaAlCrear(true);
+                  }
+                }}
+                className="w-5 h-5 rounded-md border-amber-400 text-amber-600 focus:ring-amber-500 cursor-pointer"
+              />
+              <label htmlFor="toggle-activar-carta-compromiso" className="cursor-pointer space-y-0.5 select-none">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-black text-slate-900 flex items-center space-x-1.5">
+                    <FileSignature className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Activar Carta de Compromiso para esta actividad</span>
+                  </span>
+                  <span className="text-[9px] font-extrabold uppercase bg-amber-200 text-amber-950 px-1.5 py-0.5 rounded-md">
+                    1 Clic
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  {formData.requiereCartaCompromiso
+                    ? `Carta de compromiso activada para ${formData.tipoActividad || 'esta actividad'}. Se habilitan opciones de descarga y previsualización.`
+                    : `Esta actividad (${formData.tipoActividad || 'general'}) no la requiere por defecto. Haz clic para activarla.`}
+                </p>
+              </label>
+            </div>
+
+            <button
+              type="button"
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 shrink-0 cursor-pointer ${
+                formData.requiereCartaCompromiso
+                  ? 'bg-amber-400 text-amber-950 hover:bg-amber-300 shadow-2xs font-black'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <span>{formData.requiereCartaCompromiso ? '✓ Activada' : '+ Activar con 1 Clic'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Ticket: Descarga Automática de Carta de Compromiso & Gestión (Activa para Préstamos/Cumpleaños o activada con 1 Clic) */}
+      {(isCommitmentLetterEligible(formData.tipoActividad, formData.tipoPrestamo) || formData.requiereCartaCompromiso) && (
         <div className="space-y-3 pt-1">
           <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-300 flex items-start justify-between gap-3">
             <div className="flex items-start space-x-3">

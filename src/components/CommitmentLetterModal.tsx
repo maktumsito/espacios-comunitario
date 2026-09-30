@@ -94,13 +94,17 @@ export const CommitmentLetterModal: React.FC<CommitmentLetterModalProps> = ({
   // Keep in sync when modal opens or reservationData changes
   React.useEffect(() => {
     if (isOpen) {
+      const derivedSlots = extractScheduleSlots(reservationData, { seriesScheduleItems, allReservations });
+      const derivedRange = computeCommitmentDateRangeAndDays(derivedSlots, reservationData);
+      const initialEspacio = (derivedRange.uniqueSpacesText || reservationData.espacio || 'SALA 3').toUpperCase();
+
       setLocalData({
         responsable: (reservationData.responsable || '').toUpperCase(),
         rut: (reservationData.rut || '').toUpperCase(),
         telefonoContacto: (reservationData.telefonoContacto || '').toUpperCase(),
         emailContacto: (reservationData.emailContacto || '').toUpperCase(),
         domicilio: (reservationData.domicilio || '').toUpperCase(),
-        espacio: (reservationData.espacio || 'SALA 3').toUpperCase(),
+        espacio: initialEspacio,
         fecha: reservationData.fecha || format(new Date(), 'yyyy-MM-dd'),
         horaInicio: reservationData.horaInicio || '14:00',
         horaFin: reservationData.horaFin || '22:00',
@@ -115,7 +119,7 @@ export const CommitmentLetterModal: React.FC<CommitmentLetterModalProps> = ({
         delegacionFacultades: (reservationData.delegacionFacultades || '').toUpperCase()
       });
     }
-  }, [isOpen, reservationData]);
+  }, [isOpen, reservationData, seriesScheduleItems, allReservations]);
 
   const handleSaveLocalChanges = () => {
     if (onUpdateReservationData) {

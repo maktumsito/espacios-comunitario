@@ -17,7 +17,7 @@ export function VirtualCardGrid<T extends { id: string }>({ items, renderItem }:
   const virtualizer = useVirtualizer({
     count: Math.ceil(items.length / columns),
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 120,
+    estimateSize: () => 92,
     overscan: 1,
     gap: 10,
     getItemKey: row => `${columns}:${items[row * columns].id}`,

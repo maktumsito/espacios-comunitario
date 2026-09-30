@@ -21,7 +21,10 @@ import {
   Check,
   FileText,
   Printer,
-  Download
+  Download,
+  Building2,
+  Tag,
+  BookmarkCheck
 } from 'lucide-react';
 import {
   Reservation,
@@ -59,7 +62,9 @@ import {
   getUpcomingWeekendDate,
   AlcanceActividadesTipo,
   calculateActivityDatesForDispatchDate,
-  calculateAllScheduledActivityDates
+  calculateAllScheduledActivityDates,
+  EmailDispatchFilterMode,
+  isLoanReservation
 } from '../services/gmailDispatchService';
 import { recordAuditEntry } from '../services/auditLogService';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
@@ -74,6 +79,8 @@ interface GmailDispatchModalProps {
   availableActivityTypes?: ActivityTypeItem[];
   availableLoanTypes?: LoanType[];
   initialDate?: string;
+  initialFilterMode?: EmailDispatchFilterMode;
+  initialReservationId?: string;
   currentUser?: any;
 }
 
@@ -87,6 +94,8 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
   availableActivityTypes = [],
   availableLoanTypes = [],
   initialDate,
+  initialFilterMode,
+  initialReservationId,
   currentUser
 }) => {
   // Google Auth State
@@ -127,7 +136,10 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
   const [scheduleScope, setScheduleScope] = useState<AlcanceActividadesTipo>('fin_de_semana');
   const [scheduleSpecificActivityDays, setScheduleSpecificActivityDays] = useState<number[]>([6, 0]);
 
-  // Activity Type Filters
+  // Activity Type Filters & Loan Filter Mode
+  const [dispatchFilterMode, setDispatchFilterMode] = useState<EmailDispatchFilterMode>(
+    initialFilterMode || 'solo_prestamos'
+  );
   const [allActivityTypesSelected, setAllActivityTypesSelected] = useState<boolean>(true);
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
 
@@ -165,6 +177,12 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
     if (!isOpen) return;
 
     loadGmailDispatchConfig().then(cfg => {
+      if (initialFilterMode) {
+        setDispatchFilterMode(initialFilterMode);
+      } else if (cfg.dispatchFilterMode) {
+        setDispatchFilterMode(cfg.dispatchFilterMode);
+      }
+
       if (cfg.defaultRecipients && cfg.defaultRecipients.length > 0) {
         setRecipients(cfg.defaultRecipients);
       }
@@ -195,7 +213,7 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
         }
       }
     });
-  }, [isOpen]);
+  }, [isOpen, initialFilterMode]);
 
   // Compute list of selected activity dates based on mode
   const effectiveDates = useMemo<string[]>(() => {
@@ -257,7 +275,7 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
     return Array.from(set).sort();
   }, [availableActivityTypes, reservations]);
 
-  // Filter reservations by selected dates and activity types
+  // Filter reservations by selected dates, filter mode (loans or activities), and specific activity types
   const matchingActivities = useMemo<ActivityEmailItem[]>(() => {
     const datesSet = new Set(effectiveDates);
 
@@ -266,6 +284,29 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
         if (!datesSet.has(r.fecha)) return false;
         if (r.estado === 'cancelada') return false;
 
+        const isLoan = isLoanReservation(r);
+
+        // Apply dispatchFilterMode:
+        if (dispatchFilterMode === 'solo_prestamos') {
+          return isLoan;
+        }
+
+        if (dispatchFilterMode === 'prestamos_y_seleccionadas') {
+          if (isLoan) return true;
+          if (!allActivityTypesSelected) {
+            return selectedActivityTypes.includes(r.tipoActividad);
+          }
+          return false;
+        }
+
+        if (dispatchFilterMode === 'actividades_seleccionadas') {
+          if (!allActivityTypesSelected) {
+            return selectedActivityTypes.includes(r.tipoActividad);
+          }
+          return true;
+        }
+
+        // 'todas'
         if (!allActivityTypesSelected) {
           if (!selectedActivityTypes.includes(r.tipoActividad)) return false;
         }
@@ -291,15 +332,24 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
         if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
         return a.horaInicio.localeCompare(b.horaInicio);
       });
-  }, [reservations, effectiveDates, allActivityTypesSelected, selectedActivityTypes]);
+  }, [reservations, effectiveDates, dispatchFilterMode, allActivityTypesSelected, selectedActivityTypes]);
 
   // Activity Selection State (user can select/deselect individual activities to dispatch)
   const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>([]);
 
-  // Automatically select all candidate activities when filtered activities change
-  useEffect(() => {
-    setSelectedActivityIds(matchingActivities.map(a => a.id));
+  // Number of loan activities among candidates
+  const totalLoansInMatching = useMemo(() => {
+    return matchingActivities.filter(a => isLoanReservation(a)).length;
   }, [matchingActivities]);
+
+  // Automatically select candidate activities (or target reservation) when candidate set changes
+  useEffect(() => {
+    if (initialReservationId && matchingActivities.some(a => a.id === initialReservationId)) {
+      setSelectedActivityIds([initialReservationId]);
+    } else {
+      setSelectedActivityIds(matchingActivities.map(a => a.id));
+    }
+  }, [matchingActivities, initialReservationId]);
 
   // Subset of activities explicitly selected by user to be sent
   const activitiesToDispatch = useMemo<ActivityEmailItem[]>(() => {
@@ -326,6 +376,11 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
 
   const handleSelectAllActivities = () => {
     setSelectedActivityIds(matchingActivities.map(a => a.id));
+  };
+
+  const handleSelectOnlyLoans = () => {
+    const loanIds = matchingActivities.filter(a => isLoanReservation(a)).map(a => a.id);
+    setSelectedActivityIds(loanIds);
   };
 
   const handleDeselectAllActivities = () => {
@@ -613,11 +668,16 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
   };
 
   // Metadata is cheap; document generation happens only in explicit actions.
-  const dailyPdfAttachments = useMemo(() => effectiveDates.map(date => ({
-    date,
-    filename: getDailySchedulePdfFilename(date),
-    activitiesCount: reservations.filter(r => r.fecha === date).length,
-  })), [effectiveDates, reservations]);
+  const dailyPdfAttachments = useMemo(() => effectiveDates.map(date => {
+    const selectedSet = new Set(selectedActivityIds);
+    const activitiesCount = reservations.filter(r => r.fecha === date && selectedSet.has(r.id)).length;
+    return {
+      date,
+      filename: getDailySchedulePdfFilename(date),
+      activitiesCount,
+    };
+  }), [effectiveDates, reservations, selectedActivityIds]);
+
   const [downloadingPdf, setDownloadingPdf] = useState<string | null>(null);
   const pdfOptions = {
     spaces: availableSpaces,
@@ -630,7 +690,9 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
     if (downloadingPdf) return;
     setDownloadingPdf(date);
     try {
-      const [item] = await generateDailyPdfsForDates([date], reservations, pdfOptions);
+      const selectedSet = new Set(selectedActivityIds);
+      const filteredReservations = reservations.filter(r => selectedSet.has(r.id));
+      const [item] = await generateDailyPdfsForDates([date], filteredReservations, pdfOptions);
       item.doc.save(item.filename);
     } catch (error) {
       setSendErrorMessage('No se pudo generar el PDF. Intente nuevamente.');
@@ -648,7 +710,9 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
     setSendSuccessMessage(null);
 
     try {
-      const documents = await generateDailyPdfsForDates(effectiveDates, reservations, pdfOptions);
+      const selectedSet = new Set(selectedActivityIds);
+      const filteredReservations = reservations.filter(r => selectedSet.has(r.id));
+      const documents = await generateDailyPdfsForDates(effectiveDates, filteredReservations, pdfOptions);
       const attachmentsToSend = documents.map(item => ({
         filename: item.filename,
         contentType: 'application/pdf',
@@ -1428,62 +1492,175 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                 )}
               </div>
 
-              {/* Section 2: Tipos de Actividad */}
-              <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-4.5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-1.5">
-                    <Filter className="w-4 h-4 text-blue-600" />
-                    <span>2. Tipo de Actividad a Enviar</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAllActivityTypesSelected(true);
-                      setSelectedActivityTypes([]);
-                    }}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold cursor-pointer underline"
-                  >
-                    Seleccionar Todos
-                  </button>
+              {/* Section 2: Filtro de Contenido (Solo Préstamos / Actividades Seleccionadas) */}
+              <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-4.5 space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center space-x-1.5">
+                      <Tag className="w-4 h-4 text-blue-600" />
+                      <span>2. Filtro de Contenido del Correo</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Elige si el correo y las planillas PDF se envían <strong>solo para préstamos</strong> o para actividades específicas.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {/* Filter Mode Selector Buttons */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setAllActivityTypesSelected(true);
-                      setSelectedActivityTypes([]);
-                    }}
-                    className={`flex items-center justify-between p-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer text-left ${
-                      allActivityTypesSelected
-                        ? 'bg-blue-50 border-blue-400 text-blue-800 shadow-2xs'
+                    onClick={() => setDispatchFilterMode('solo_prestamos')}
+                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      dispatchFilterMode === 'solo_prestamos'
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
                         : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <span>Todos los Tipos</span>
-                    {allActivityTypesSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold flex items-center gap-1">
+                        <Building2 className="w-3.5 h-3.5" />
+                        <span>Solo Préstamos</span>
+                      </span>
+                      {dispatchFilterMode === 'solo_prestamos' && (
+                        <Check className="w-3.5 h-3.5 text-white" />
+                      )}
+                    </div>
+                    <span className={`text-[10px] mt-1 ${dispatchFilterMode === 'solo_prestamos' ? 'text-blue-100' : 'text-slate-400'}`}>
+                      Solo reservas de préstamos
+                    </span>
                   </button>
 
-                  {allDistinctActivityTypes.map(type => {
-                    const isSelected = !allActivityTypesSelected && selectedActivityTypes.includes(type);
-                    return (
+                  <button
+                    type="button"
+                    onClick={() => setDispatchFilterMode('prestamos_y_seleccionadas')}
+                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      dispatchFilterMode === 'prestamos_y_seleccionadas'
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold flex items-center gap-1">
+                        <BookmarkCheck className="w-3.5 h-3.5" />
+                        <span>Préstamos + Selección</span>
+                      </span>
+                      {dispatchFilterMode === 'prestamos_y_seleccionadas' && (
+                        <Check className="w-3.5 h-3.5 text-white" />
+                      )}
+                    </div>
+                    <span className={`text-[10px] mt-1 ${dispatchFilterMode === 'prestamos_y_seleccionadas' ? 'text-blue-100' : 'text-slate-400'}`}>
+                      Préstamos y tipos marcados
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDispatchFilterMode('actividades_seleccionadas')}
+                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      dispatchFilterMode === 'actividades_seleccionadas'
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold flex items-center gap-1">
+                        <Filter className="w-3.5 h-3.5" />
+                        <span>Solo Selección</span>
+                      </span>
+                      {dispatchFilterMode === 'actividades_seleccionadas' && (
+                        <Check className="w-3.5 h-3.5 text-white" />
+                      )}
+                    </div>
+                    <span className={`text-[10px] mt-1 ${dispatchFilterMode === 'actividades_seleccionadas' ? 'text-blue-100' : 'text-slate-400'}`}>
+                      Solo tipos marcados abajo
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDispatchFilterMode('todas')}
+                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      dispatchFilterMode === 'todas'
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Todas</span>
+                      </span>
+                      {dispatchFilterMode === 'todas' && (
+                        <Check className="w-3.5 h-3.5 text-white" />
+                      )}
+                    </div>
+                    <span className={`text-[10px] mt-1 ${dispatchFilterMode === 'todas' ? 'text-blue-100' : 'text-slate-400'}`}>
+                      Sin filtro por categoría
+                    </span>
+                  </button>
+                </div>
+
+                {/* Sub-selector of activity types when not purely solo_prestamos */}
+                {dispatchFilterMode !== 'solo_prestamos' && (
+                  <div className="pt-2 border-t border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-700">
+                        Tipos de Actividades Específicas:
+                      </span>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAllActivityTypesSelected(true);
+                            setSelectedActivityTypes([]);
+                          }}
+                          className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold cursor-pointer underline"
+                        >
+                          Seleccionar Todos
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       <button
-                        key={type}
                         type="button"
-                        onClick={() => handleToggleActivityType(type)}
-                        className={`flex items-center justify-between p-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer text-left truncate ${
-                          isSelected
+                        onClick={() => {
+                          setAllActivityTypesSelected(true);
+                          setSelectedActivityTypes([]);
+                        }}
+                        className={`flex items-center justify-between p-2 rounded-xl border text-xs font-semibold transition cursor-pointer text-left ${
+                          allActivityTypesSelected
                             ? 'bg-blue-50 border-blue-400 text-blue-800 shadow-2xs'
                             : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                         }`}
-                        title={type}
                       >
-                        <span className="truncate">{type}</span>
-                        {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 ml-1" />}
+                        <span>Todos los Tipos</span>
+                        {allActivityTypesSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />}
                       </button>
-                    );
-                  })}
-                </div>
+
+                      {allDistinctActivityTypes.map(type => {
+                        const isSelected = !allActivityTypesSelected && selectedActivityTypes.includes(type);
+                        return (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => handleToggleActivityType(type)}
+                            className={`flex items-center justify-between p-2 rounded-xl border text-xs font-semibold transition cursor-pointer text-left truncate ${
+                              isSelected
+                                ? 'bg-blue-50 border-blue-400 text-blue-800 shadow-2xs'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                            title={type}
+                          >
+                            <span className="truncate">{type}</span>
+                            {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 ml-1" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Section 3: Selección de Actividades a Enviar */}
@@ -1499,10 +1676,24 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                     </p>
                   </div>
 
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-blue-100/70 text-blue-800 border border-blue-200">
                       {activitiesToDispatch.length} de {matchingActivities.length} seleccionadas
                     </span>
+
+                    {totalLoansInMatching > 0 && (
+                      <button
+                        type="button"
+                        id="btn-select-only-loans"
+                        onClick={handleSelectOnlyLoans}
+                        className="text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-800 hover:bg-emerald-100 transition cursor-pointer flex items-center space-x-1"
+                        title="Marcar únicamente las reservas catalogadas como préstamos"
+                      >
+                        <Building2 className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>Solo Préstamos ({totalLoansInMatching})</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       id="btn-select-all-activities"
@@ -1597,6 +1788,12 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                                       <span className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-semibold">
                                         {act.tipoActividad}
                                       </span>
+                                      {isLoanReservation(act) && (
+                                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-bold flex items-center gap-1 shadow-2xs">
+                                          <Building2 className="w-3 h-3 text-emerald-700" />
+                                          <span>Préstamo {act.tipoPrestamo ? `(${act.tipoPrestamo})` : ''}</span>
+                                        </span>
+                                      )}
                                       {act.cantidadParticipantes && (
                                         <span className="text-[10px] text-slate-500">
                                           👥 {act.cantidadParticipantes} pers.
@@ -1803,12 +2000,12 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                     </span>
                   </div>
                   <span className="text-[11px] font-semibold text-blue-800 bg-blue-100/70 px-2 py-0.5 rounded-md border border-blue-200 self-start sm:self-auto">
-                    1 planilla por día lista para imprimir
+                    Hoja: 8.5" × 13" (Oficio) • 1 por día
                   </span>
                 </div>
 
                 <p className="text-[11px] text-slate-600">
-                  El correo adjuntará automáticamente una planilla PDF vectorizada por cada día que se envíe con el fin de imprimir en portería/administración:
+                  El correo adjuntará automáticamente una planilla PDF vectorizada en <strong>hoja de 8.5" × 13" (Oficio)</strong> por cada día que se envíe con el fin de imprimir directamente en portería/administración:
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

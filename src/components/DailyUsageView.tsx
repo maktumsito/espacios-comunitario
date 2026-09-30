@@ -20,7 +20,14 @@ import {
   Copy,
   Filter,
   RotateCcw,
-  Hammer
+  Hammer,
+  ChevronLeft,
+  ChevronRight,
+  User,
+  Clock,
+  Phone,
+  MapPin,
+  Mail
 } from 'lucide-react';
 import {
   format,
@@ -36,7 +43,7 @@ import { es } from 'date-fns/locale';
 import { validateStrictCalendarDate, clampAndFixCalendarDate } from '../utils/validationUtils';
 import { useReservationDateIndex } from '../utils/reservationIndex';
 import { formatActivitiesCount } from '../utils/pluralUtils';
-import { getReservationTypeVisual, RESERVATION_TYPE_LEGEND } from '../utils/reservationVisuals';
+import { getReservationTypeVisual, formatDisplayTitle } from '../utils/reservationVisuals';
 
 const PrintScheduleModal = React.lazy(() =>
   import('./PrintScheduleModal').then((m) => ({ default: m.PrintScheduleModal }))
@@ -65,9 +72,9 @@ interface DailyUsageViewProps {
   onDateChange?: (date: Date) => void;
 }
 
-// Ordered space list matching the user's required layout exactly:
-// Auditorio, Gimnasio, Sala Espejos, Tatami, Sala 2, Sala 3, Sala 4, Sala 5, Sala 6, Biblioteca, Patio Exterior
-const ORDERED_SPACES: string[] = [
+// Default ordered space list matching the user's required canonical layout:
+// Auditorio, Gimnasio, Sala Espejos, Tatami, Sala 2, Sala 3, Sala 4, Sala 5, Sala 6, Biblioteca, Patio Exterior, Cocina, Multicancha, Box 1
+const DEFAULT_ORDERED_SPACES: string[] = [
   'AUDITORIO',
   'GIMNASIO',
   'SALA DE ESPEJOS',
@@ -129,6 +136,42 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>(() => globalFilters?.search || '');
   const [dateErrorMessage, setDateErrorMessage] = useState<string | null>(null);
   const [hoveredSlot, setHoveredSlot] = useState<{ space: string; hour: number } | null>(null);
+  const [hoveredCardInfo, setHoveredCardInfo] = useState<{
+    res: Reservation;
+    rect: DOMRect;
+    isConflict: boolean;
+  } | null>(null);
+
+  const getHoverPopupStyle = useCallback((rect: DOMRect): React.CSSProperties => {
+    const popupWidth = 280;
+    const popupEstimatedHeight = 240;
+    const padding = 12;
+
+    let left = rect.right + 10;
+    if (left + popupWidth > window.innerWidth - padding) {
+      left = rect.left - popupWidth - 10;
+    }
+    if (left < padding) {
+      left = Math.max(padding, window.innerWidth - popupWidth - padding);
+    }
+
+    let top = rect.top - 6;
+    if (top + popupEstimatedHeight > window.innerHeight - padding) {
+      top = Math.max(padding, window.innerHeight - popupEstimatedHeight - padding);
+    }
+    if (top < padding) {
+      top = padding;
+    }
+
+    return {
+      position: 'fixed',
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${popupWidth}px`,
+      zIndex: 9999,
+      pointerEvents: 'none',
+    };
+  }, []);
 
   const updateSelectedDate = useCallback((newDate: Date) => {
     setCurrentDate(newDate);
@@ -153,6 +196,36 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
   // Drag & Drop State for Space Columns Reordering
   const [draggedHeaderIndex, setDraggedHeaderIndex] = useState<number | null>(null);
   const [dragOverHeaderIndex, setDragOverHeaderIndex] = useState<number | null>(null);
+
+  // State to enable/disable reordering spaces (locked by default to prevent accidental dragging)
+  const [allowSpaceReorder, setAllowSpaceReorder] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('allow_reorder_spaces');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent<boolean>;
+      if (typeof customEvent.detail === 'boolean') {
+        setAllowSpaceReorder(customEvent.detail);
+      }
+    };
+    window.addEventListener('app_spaces_reorder_toggled', handleSync);
+    return () => window.removeEventListener('app_spaces_reorder_toggled', handleSync);
+  }, []);
+
+  // Local state for spaces columns to allow 0ms instantaneous ("altiro") reordering
+  const [localSpaces, setLocalSpaces] = useState<SpaceInfo[]>(() => (spaces && spaces.length > 0 ? spaces : SPACES_LIST));
+
+  useEffect(() => {
+    if (spaces && spaces.length > 0) {
+      setLocalSpaces(spaces);
+    }
+  }, [spaces]);
 
   // Notification feedback banner
   const [toastMessage, setToastMessage] = useState<{ text: string; sub?: string } | null>(null);
@@ -201,9 +274,11 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
     return { startHour: minH, endHour: maxH };
   }, [rawDayReservations, dateStr]);
 
+  // Vista compacta de fábrica (optimizada para máxima visibilidad horizontal y vertical)
+  const isCompact = true;
   const START_HOUR = startHour;
   const END_HOUR = endHour;
-  const HOUR_HEIGHT = 68; // px per hour
+  const HOUR_HEIGHT = 56; // px per hour (compacta de fábrica)
   const START_MINUTES = START_HOUR * 60;
   const TOTAL_HOURS = END_HOUR - START_HOUR;
   const TOTAL_MINUTES = TOTAL_HOURS * 60;
@@ -355,9 +430,9 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
     });
   }, [rawDayReservations, searchQuery]);
 
-  // Normalize, map and strictly sort all spaces according to the canonical order (respecting active space filters)
+  // Normalize, map and assemble spaces preserving user's customized column order (respecting active space filters)
   const activeSpaces = useMemo(() => {
-    let list: SpaceInfo[] = [...spaces];
+    let list: SpaceInfo[] = [...(localSpaces && localSpaces.length > 0 ? localSpaces : (spaces && spaces.length > 0 ? spaces : SPACES_LIST))];
 
     // Check if day reservations have any space not in list
     const knownSpaces = new Set(list.map((s) => normalizeSpaceName(s.name)));
@@ -386,18 +461,9 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
       }
     }
 
-    // Sort according to ORDERED_SPACES index
-    return list.sort((a, b) => {
-      const normA = normalizeSpaceName(a.name);
-      const normB = normalizeSpaceName(b.name);
-      const idxA = ORDERED_SPACES.indexOf(normA);
-      const idxB = ORDERED_SPACES.indexOf(normB);
-      const posA = idxA >= 0 ? idxA : 999;
-      const posB = idxB >= 0 ? idxB : 999;
-      if (posA !== posB) return posA - posB;
-      return a.name.localeCompare(b.name);
-    });
-  }, [spaces, dayReservations, globalFilters?.espacio]);
+    // Do NOT force hardcoded sort: preserves user's chosen column order exactly!
+    return list;
+  }, [localSpaces, spaces, dayReservations, globalFilters?.espacio]);
 
 
   // Conflict IDs for the day (utilizes precomputed global Set when provided for O(1) lookups)
@@ -433,6 +499,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
   // --- DRAG & DROP HANDLERS FOR RESERVATIONS ---
   const handleReservationDragStart = (e: React.DragEvent, res: Reservation) => {
     e.stopPropagation();
+    setHoveredCardInfo(null);
     setDraggedReservation(res);
     e.dataTransfer.setData('text/plain', res.id);
     e.dataTransfer.setData('application/json', JSON.stringify({
@@ -601,8 +668,42 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
     }
   };
 
-  // --- DRAG & DROP FOR SPACE COLUMNS REORDERING ---
+  // --- INSTANT SPACE COLUMNS REORDERING & DRAG-AND-DROP ---
+  const handleMoveSpace = useCallback((fromIndex: number, toIndex: number) => {
+    if (
+      fromIndex === toIndex ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= activeSpaces.length ||
+      toIndex >= activeSpaces.length
+    ) {
+      return;
+    }
+
+    const targetSpace = activeSpaces[fromIndex];
+    const newSpaces = [...activeSpaces];
+    const [moved] = newSpaces.splice(fromIndex, 1);
+    newSpaces.splice(toIndex, 0, moved);
+
+    // 1. Optimistic state update: Instant 0ms visual reordering ("altiro")
+    setLocalSpaces(newSpaces);
+
+    // 2. Propagate to parent & storage without blocking
+    if (onReorderSpaces) {
+      onReorderSpaces(newSpaces);
+    }
+
+    setToastMessage({
+      text: `Espacio reordenado al instante`,
+      sub: `"${targetSpace.name}" movido a la posición ${toIndex + 1}`
+    });
+  }, [activeSpaces, onReorderSpaces]);
+
   const handleHeaderDragStart = (e: React.DragEvent, index: number) => {
+    if (!allowSpaceReorder) {
+      e.preventDefault();
+      return;
+    }
     setDraggedHeaderIndex(index);
     e.dataTransfer.setData('text/plain', `COL_${index}`);
     e.dataTransfer.effectAllowed = 'move';
@@ -618,31 +719,27 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
       }
       return;
     }
+    if (!allowSpaceReorder) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverHeaderIndex(index);
+    if (dragOverHeaderIndex !== index) {
+      setDragOverHeaderIndex(index);
+    }
   };
 
   const handleHeaderColumnDrop = (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
-    if (draggedHeaderIndex === null || draggedHeaderIndex === targetIndex || !onReorderSpaces) {
+    if (!allowSpaceReorder || draggedHeaderIndex === null || draggedHeaderIndex === targetIndex) {
       setDraggedHeaderIndex(null);
       setDragOverHeaderIndex(null);
       return;
     }
 
-    const reordered = [...activeSpaces];
-    const [moved] = reordered.splice(draggedHeaderIndex, 1);
-    reordered.splice(targetIndex, 0, moved);
-
-    onReorderSpaces(reordered);
-    setToastMessage({
-      text: `Orden de espacios actualizado`,
-      sub: `Columna "${moved.name}" reubicada`
-    });
-
+    const fromIndex = draggedHeaderIndex;
     setDraggedHeaderIndex(null);
     setDragOverHeaderIndex(null);
+
+    handleMoveSpace(fromIndex, targetIndex);
   };
 
   // Quick navigation handlers
@@ -754,6 +851,13 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
       scrollContainerRef.current.scrollTop = targetScroll;
     }
   }, [selectedDate]);
+
+  // Dynamic minimum width adapted to selected density mode
+  const gridMinWidth = useMemo(() => {
+    const colWidth = isCompact ? 130 : 150;
+    const timeColWidth = isCompact ? 64 : 72;
+    return Math.max(isCompact ? 1050 : 1320, activeSpaces.length * colWidth + timeColWidth);
+  }, [activeSpaces.length, isCompact]);
 
   return (
     <div className="w-full space-y-2 pb-1 relative">
@@ -1048,7 +1152,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => onNewReservationWithSlot(ORDERED_SPACES[0], dateStr, '10:00', '11:00')}
+              onClick={() => onNewReservationWithSlot(activeSpaces[0]?.name || 'AUDITORIO', dateStr, '10:00', '11:00')}
               className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs transition shadow-2xs flex items-center space-x-1.5 cursor-pointer shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -1074,16 +1178,6 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
           </button>
         </div>
       )}
-
-      <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5" aria-label="Colores por tipo de reserva">
-        <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap mr-1">Tipos:</span>
-        {RESERVATION_TYPE_LEGEND.map((item) => (
-          <span key={item.key} className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-1 text-[10px] font-semibold ${item.bgClass} ${item.borderClass} ${item.softTextClass}`}>
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.accent }} />
-            {item.label}
-          </span>
-        ))}
-      </div>
 
       {/* 1.1 AVISO ACTIVIDADES IMPORTANTES (Desde 3 días antes) */}
       {upcomingImportant3Days.length > 0 && (
@@ -1120,17 +1214,20 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
       <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
         <div
           ref={scrollContainerRef}
+          onScroll={() => {
+            if (hoveredCardInfo) setHoveredCardInfo(null);
+          }}
           className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-140px)] min-h-0 h-[calc(100dvh-140px)] scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100"
         >
-          <div className="min-w-[1320px] relative">
+          <div className="relative" style={{ minWidth: `${gridMinWidth}px` }}>
             {/* STICKY HEADER ROW: "HORA" + All Space Columns */}
             <div ref={headerRef} className="sticky top-0 z-30 flex border-b border-slate-200 bg-[#f8fafc] text-xs font-bold text-slate-700 shadow-2xs">
-              {/* Left "HORA" header */}
-              <div className="w-[72px] shrink-0 p-3 text-center text-[11px] uppercase tracking-wider font-extrabold text-slate-500 border-r border-slate-200 bg-[#f1f5f9] flex items-center justify-center select-none">
+              {/* Left "HORA" header (Sticky on horizontal & vertical scroll) */}
+              <div className={`${isCompact ? 'w-[64px] p-2 text-[10px]' : 'w-[72px] p-3 text-[11px]'} shrink-0 text-center uppercase tracking-wider font-extrabold text-slate-600 border-r border-slate-200 bg-[#f1f5f9] flex items-center justify-center select-none sticky left-0 z-40 shadow-xs`}>
                 HORA
               </div>
 
-              {/* Space Column Headers (Draggable & Drop Target) */}
+              {/* Space Column Headers (Draggable, Drop Target & Full Text Adaptive Wrapping) */}
               {activeSpaces.map((space, idx) => {
                 const isSpecial = space.name === 'SALA 4';
                 const isHeaderDragged = draggedHeaderIndex === idx;
@@ -1140,7 +1237,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                 return (
                   <div
                     key={space.id}
-                    draggable
+                    draggable={allowSpaceReorder}
                     onDragStart={(e) => handleHeaderDragStart(e, idx)}
                     onDragOver={(e) => handleHeaderDragOver(e, idx)}
                     onDragLeave={() => {
@@ -1150,29 +1247,78 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                     onDrop={(e) => {
                       if (draggedReservation) {
                         handleHeaderDrop(e, space.name);
-                      } else {
+                      } else if (allowSpaceReorder) {
                         handleHeaderColumnDrop(e, idx);
                       }
                     }}
-                    className={`flex-1 min-w-[100px] p-2 text-center text-[11px] font-extrabold uppercase tracking-wide border-r border-slate-200 truncate transition-all cursor-grab active:cursor-grabbing select-none relative group/header ${
+                    className={`flex-1 ${isCompact ? 'min-w-[124px] sm:min-w-[130px] p-1.5' : 'min-w-[145px] sm:min-w-[150px] p-2'} text-center border-r border-slate-200 transition-all select-none relative group/header flex flex-col justify-center ${
+                      allowSpaceReorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
+                    } ${
                       isReservationHeaderTarget
                         ? 'bg-blue-100 text-blue-900 ring-2 ring-blue-500 ring-inset scale-[1.02] z-40'
                         : isHeaderDropTarget
-                        ? 'bg-amber-100 text-amber-900 border-l-4 border-l-amber-500'
+                        ? 'bg-blue-100/90 text-blue-950 border-l-4 border-l-blue-600 ring-2 ring-blue-400/70 shadow-inner z-30'
                         : isHeaderDragged
-                        ? 'opacity-40 bg-slate-200'
+                        ? 'opacity-30 bg-slate-300 border-2 border-dashed border-slate-400'
                         : isSpecial
                         ? 'bg-[#fffaf5] text-amber-900'
-                        : 'bg-[#f8fafc] text-slate-800 hover:bg-slate-100/80'
+                        : 'bg-[#f8fafc] text-slate-800 hover:bg-slate-100/90'
                     }`}
-                    title={`Arrastra para reordenar columna o suelta aquí una reserva para asignarla a ${space.name}`}
+                    title={
+                      allowSpaceReorder
+                        ? `Arrastra la columna para reordenar o usa las flechas ◀ ▶ para mover ${space.name} al instante`
+                        : `${space.name} (orden fijo)`
+                    }
                   >
-                    <div className="flex items-center justify-center space-x-1 truncate">
-                      <GripVertical className="w-3 h-3 text-slate-400 opacity-0 group-hover/header:opacity-100 transition shrink-0" />
-                      <span className="truncate block">{space.name}</span>
+                    <div className="flex items-center justify-between w-full gap-0.5">
+                      {/* Botón mover a la izquierda */}
+                      {allowSpaceReorder && idx > 0 ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveSpace(idx, idx - 1);
+                          }}
+                          className="p-1 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-100/80 transition cursor-pointer active:scale-90 shrink-0"
+                          title={`Mover "${space.name}" a la izquierda`}
+                          aria-label={`Mover "${space.name}" a la izquierda`}
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        allowSpaceReorder && <span className="w-4 shrink-0" />
+                      )}
+
+                      {/* Título de espacio completo - Adaptado con salto de línea natural y sin truncar */}
+                      <div className="flex items-center justify-center space-x-1 min-w-0 flex-1 px-1">
+                        {allowSpaceReorder && (
+                          <GripVertical className="w-3.5 h-3.5 text-slate-400 group-hover/header:text-blue-600 transition shrink-0 cursor-grab active:cursor-grabbing" />
+                        )}
+                        <span className="font-extrabold text-[10.5px] sm:text-[11px] uppercase tracking-tight text-slate-800 leading-tight text-center break-words select-none hyphens-auto">
+                          {space.name}
+                        </span>
+                      </div>
+
+                      {/* Botón mover a la derecha */}
+                      {allowSpaceReorder && idx < activeSpaces.length - 1 ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveSpace(idx, idx + 1);
+                          }}
+                          className="p-1 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-100/80 transition cursor-pointer active:scale-90 shrink-0"
+                          title={`Mover "${space.name}" a la derecha`}
+                          aria-label={`Mover "${space.name}" a la derecha`}
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        allowSpaceReorder && <span className="w-4 shrink-0" />
+                      )}
                     </div>
                     {isReservationHeaderTarget && (
-                      <span className="text-[9px] font-bold text-blue-600 block leading-tight">
+                      <span className="text-[9px] font-bold text-blue-600 block leading-tight mt-0.5">
                         🎯 Soltar aquí
                       </span>
                     )}
@@ -1183,8 +1329,8 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
 
             {/* GRID BODY: Left time labels + Space Columns + Time Line + Floating Event Cards */}
             <div className="relative flex" style={{ height: `${TOTAL_HEIGHT}px` }}>
-              {/* 1. LEFT TIME COLUMN (08:00 to 22:00) */}
-              <div className="w-[72px] shrink-0 bg-[#f8fafc] border-r border-slate-200 relative select-none z-20">
+              {/* 1. LEFT TIME COLUMN (08:00 to 22:00) - Sticky on horizontal scroll */}
+              <div className={`${isCompact ? 'w-[64px]' : 'w-[72px]'} shrink-0 bg-[#f8fafc] border-r border-slate-200 sticky left-0 select-none z-20 shadow-xs`}>
                 {hourSlots.map((h, i) => {
                   const topPx = i * HOUR_HEIGHT;
                   const hourLabel = `${String(h).padStart(2, '0')}:00`;
@@ -1192,8 +1338,8 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                   return (
                     <div
                       key={h}
-                      style={{ top: `${topPx}px` }}
-                      className="absolute left-0 right-0 h-[68px] border-b border-slate-200 flex items-start justify-center pt-2 text-[11px] font-semibold font-mono text-slate-500"
+                      style={{ top: `${topPx}px`, height: `${HOUR_HEIGHT}px` }}
+                      className="absolute left-0 right-0 border-b border-slate-200 flex items-start justify-center pt-1.5 text-[10px] sm:text-[10.5px] font-semibold font-mono text-slate-500"
                     >
                       {hourLabel}
                     </div>
@@ -1218,8 +1364,8 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                   {hourSlots.map((h, i) => (
                     <div
                       key={h}
-                      style={{ top: `${i * HOUR_HEIGHT}px` }}
-                      className="w-full border-b border-slate-100 h-[68px]"
+                      style={{ top: `${i * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
+                      className="w-full border-b border-slate-100"
                     />
                   ))}
                 </div>
@@ -1250,7 +1396,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                         }
                       }}
                       onDrop={(e) => handleColumnDrop(e, space.name)}
-                      className={`flex-1 min-w-[100px] border-r border-slate-200/80 relative transition group/col ${
+                      className={`flex-1 ${isCompact ? 'min-w-[124px] sm:min-w-[130px]' : 'min-w-[145px] sm:min-w-[150px]'} border-r border-slate-200/80 relative transition group/col ${
                         isDragTarget
                           ? 'bg-blue-50/40 ring-2 ring-blue-400/80 ring-inset'
                           : isSpecial
@@ -1261,8 +1407,10 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                       {/* Clickable hourly slots for quick booking creation */}
                       {hourSlots.slice(0, -1).map((h, i) => {
                         const topPx = i * HOUR_HEIGHT;
-                        const startH = `${String(h).padStart(2, '0')}:00`;
-                        const endH = `${String(h + 1).padStart(2, '0')}:00`;
+                        // Toda reserva desde temprano: cargar de manera predeterminada desde las 08:30 como inicio
+                        const isEarlySlot = h <= 8;
+                        const startH = isEarlySlot ? '08:30' : `${String(h).padStart(2, '0')}:00`;
+                        const endH = isEarlySlot ? '09:30' : `${String(h + 1).padStart(2, '0')}:00`;
 
                         return (
                           <button
@@ -1292,9 +1440,9 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                             onClick={() => onNewReservationWithSlot(space.name, dateStr, startH, endH)}
                             onMouseEnter={() => setHoveredSlot({ space: space.name, hour: h })}
                             onMouseLeave={() => setHoveredSlot(null)}
-                            aria-label={`Reservar ${space.name} a las ${startH}`}
+                            aria-label={isEarlySlot ? `Reservar ${space.name} desde las 08:30` : `Reservar ${space.name} a las ${startH}`}
                             className="absolute inset-x-0 w-full text-left bg-transparent border-0 cursor-pointer hover:bg-blue-50/30 transition-colors z-5 flex items-center justify-center group/cell p-0"
-                            title={`Haga clic para reservar en ${space.name} a las ${startH}`}
+                            title={isEarlySlot ? `Haga clic para reservar en ${space.name} desde las 08:30 (ingreso manual si requiere antes)` : `Haga clic para reservar en ${space.name} a las ${startH}`}
                           >
                             <span className="opacity-0 group-hover/cell:opacity-100 text-[10px] font-semibold text-blue-600 bg-white/80 px-1.5 py-0.5 rounded shadow-2xs transition pointer-events-none">
                               + Reservar
@@ -1400,7 +1548,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                         if (clampEnd <= clampStart) return null;
 
                         const topPosition = ((clampStart - START_MINUTES) / 60) * HOUR_HEIGHT;
-                        const cardHeight = Math.max(38, ((clampEnd - clampStart) / 60) * HOUR_HEIGHT);
+                        const cardHeight = Math.max(34, ((clampEnd - clampStart) / 60) * HOUR_HEIGHT);
 
                         const isConflict = conflictIdsToday.has(res.id);
                         const isBeingDragged = draggedReservation?.id === res.id;
@@ -1412,46 +1560,32 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                         const colWidthPercent = 100 / layout.totalCols;
                         const cardLeftStyle = isOverlapping
                           ? `calc(${layout.colIndex * colWidthPercent}% + 2px)`
-                          : '4px';
+                          : '3px';
                         const cardWidthStyle = isOverlapping
                           ? `calc(${colWidthPercent}% - 4px)`
-                          : 'calc(100% - 8px)';
+                          : 'calc(100% - 6px)';
 
                         const styling = getCardStyle(res, isConflict);
 
                         // Dynamic text and spacing adaptation tiers based on card height & width
-                        const isVeryShort = cardHeight < 48;
-                        const isShort = cardHeight >= 48 && cardHeight < 72;
-                        const isMedium = cardHeight >= 72 && cardHeight < 115;
-                        const isTall = cardHeight >= 115;
+                        const isVeryShort = cardHeight < 44;
+                        const isShort = cardHeight >= 44 && cardHeight < 68;
+                        const isMedium = cardHeight >= 68 && cardHeight < 110;
+                        const isTall = cardHeight >= 110;
+
+                        // Primary activity title and subcategory distinction
+                        const mainTitle = (res.descripcion && res.descripcion.trim()) ? res.descripcion.trim() : res.tipoActividad;
+                        const displayTitle = formatDisplayTitle(mainTitle);
+                        const hasDistinctSubcategory = Boolean(res.descripcion && res.descripcion.trim() && res.tipoActividad && res.tipoActividad.trim().toLowerCase() !== res.descripcion.trim().toLowerCase());
 
                         // Adaptive padding class
                         const paddingClass = isVeryShort
                           ? 'p-1 px-1.5'
                           : isShort
-                          ? 'p-1.5 px-2'
+                          ? 'p-1.5'
                           : isMedium
-                          ? 'p-2'
-                          : 'p-2.5';
-
-                        // Adaptive typography classes (constrained to max 2 lines total)
-                        const titleClass = isVeryShort
-                          ? 'text-[8.5px] font-black uppercase tracking-tight text-slate-900 leading-tight truncate'
-                          : isShort
-                          ? isOverlapping
-                            ? 'text-[8.5px] font-black uppercase tracking-tight text-slate-900 leading-tight truncate'
-                            : 'text-[9.5px] font-black uppercase tracking-tight text-slate-900 leading-tight truncate'
-                          : isMedium
-                          ? 'text-[10px] font-black uppercase tracking-tight text-slate-900 leading-tight truncate'
-                          : 'text-[10.5px] font-black uppercase tracking-wide text-slate-900 leading-snug truncate';
-
-                        const descClass = isVeryShort
-                          ? 'text-[8px] font-medium uppercase text-slate-700 leading-none truncate'
-                          : isShort
-                          ? 'text-[8.5px] font-semibold uppercase text-slate-700 leading-tight line-clamp-1 break-words'
-                          : isMedium
-                          ? 'text-[8.5px] font-medium uppercase text-slate-700 leading-tight line-clamp-1 break-words'
-                          : 'text-[9px] font-medium uppercase text-slate-700 leading-snug line-clamp-2 break-words';
+                          ? 'p-1.5 sm:p-2'
+                          : 'p-2 sm:p-2.5';
 
                         return (
                           <div
@@ -1492,31 +1626,43 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                               }
                             }}
                             style={{
-                              top: `${topPosition + 2}px`,
-                              height: `${cardHeight - 4}px`,
+                              top: `${topPosition + 1}px`,
+                              height: `${cardHeight - 2}px`,
                               left: cardLeftStyle,
-                              width: cardWidthStyle
+                              width: cardWidthStyle,
+                              borderLeftColor: styling.accent,
+                              borderLeftWidth: '3.5px'
                             }}
-                            className={`absolute rounded-lg ${paddingClass} ${styling.bg} border ${styling.border} ${styling.shadow} cursor-grab active:cursor-grabbing hover:scale-[1.02] hover:z-30 transition-all flex flex-col justify-between overflow-hidden select-none z-10 group/card focus:ring-2 focus:ring-blue-500 focus:outline-none focus:z-40 ${
+                            onMouseEnter={(e) => {
+                              if (isBeingDragged || draggedReservation) return;
+                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                              setHoveredCardInfo({ res, rect, isConflict });
+                            }}
+                            onMouseLeave={() => {
+                              setHoveredCardInfo((current) => (current?.res.id === res.id ? null : current));
+                            }}
+                            className={`absolute rounded-md ${paddingClass} ${styling.bg} border ${styling.border} ${styling.shadow} cursor-grab active:cursor-grabbing hover:z-30 hover:ring-2 hover:ring-blue-400/80 transition-all flex flex-col justify-between overflow-hidden select-none z-10 group/card focus:ring-2 focus:ring-blue-500 focus:outline-none focus:z-40 ${
                               isBeingDragged ? 'opacity-30 scale-95 ring-2 ring-blue-500' : ''
                             } ${isOverlapping ? 'ring-1 ring-rose-400/50' : ''}`}
-                            title={`${isConflict || isOverlapping ? '⚠️ ¡TOPAMIENTO / RESERVAS PARALELAS!\n' : ''}${res.horaInicio} - ${res.horaFin}\nTipo: ${res.tipoActividad}${res.descripcion ? `\nDescripción: ${res.descripcion}` : ''}\n\n👉 ¡Arrastra esta tarjeta a cualquier espacio u horario para moverla!\n(Haz clic para ver detalles)`}
+                            title={`${isConflict || isOverlapping ? '⚠️ ¡TOPAMIENTO / RESERVAS PARALELAS!\n' : ''}${res.horaInicio} - ${res.horaFin}\nActividad: ${mainTitle}${hasDistinctSubcategory ? `\nTipo: ${res.tipoActividad}` : ''}\nResponsable: ${res.responsable}${res.telefonoContacto ? `\nTel: ${res.telefonoContacto}` : ''}\n\n👉 ¡Arrastra esta tarjeta a cualquier espacio u horario para moverla!\n(Haz clic para ver detalles)`}
                           >
                             {/* Main Content Area */}
                             <div className="flex-1 min-h-0 flex flex-col justify-start overflow-hidden">
-                              {/* Header row: Grip, Badges & Quick Action Icons */}
-                              <div className="flex items-center justify-between min-h-[12px] mb-0.5">
+                              {/* Header row: Time Badge, Status Badges & Quick Action Icons */}
+                              <div className="flex items-center justify-between min-h-[13px] mb-1 gap-1">
                                 <div className="flex items-center space-x-1 min-w-0">
                                   <GripVertical className="w-2.5 h-2.5 text-slate-400 shrink-0 opacity-40 group-hover/card:opacity-100 transition" />
+                                  <span className="font-mono tabular-nums font-bold text-[8.5px] sm:text-[9px] text-slate-700 bg-white/95 px-1 py-0.2 rounded border border-black/5 shadow-2xs shrink-0 select-none">
+                                    {isOverlapping && layout.totalCols >= 2 ? res.horaInicio : `${res.horaInicio} – ${res.horaFin}`}
+                                  </span>
                                   {isConflict && (
-                                    <span title="Topamiento de horario" className="text-[8px] bg-rose-600 text-white px-1 py-0.2 rounded font-bold uppercase tracking-tight shrink-0">
+                                    <span title="Topamiento de horario" className="text-[7.5px] bg-rose-600 text-white px-1 py-0.2 rounded font-black uppercase tracking-tight shrink-0">
                                       ⚠️ TOP
                                     </span>
                                   )}
                                   {res.solicitudEliminacion && (
-                                    <span title="Solicitud de eliminación en espera de autorización" className="text-[8px] bg-amber-500 text-white px-1 py-0.2 rounded font-bold uppercase tracking-tight shrink-0 flex items-center gap-0.5">
+                                    <span title="Solicitud de eliminación en espera de autorización" className="text-[7.5px] bg-amber-500 text-white px-1 py-0.2 rounded font-bold uppercase tracking-tight shrink-0 flex items-center gap-0.5">
                                       <span>⏳</span>
-                                      <span>ESPERA</span>
                                     </span>
                                   )}
                                   {res.importante === 'Sí' && (
@@ -1525,7 +1671,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                                 </div>
                                 
                                 {/* Quick edit/duplicate/delete icons on hover */}
-                                <div className="hidden group-hover/card:flex items-center space-x-0.5 ml-1 shrink-0">
+                                <div className="hidden group-hover/card:flex items-center space-x-0.5 ml-1 shrink-0 bg-white/95 backdrop-blur-xs p-0.5 rounded shadow-2xs">
                                   {onDuplicateReservation && (
                                     <button
                                       type="button"
@@ -1560,8 +1706,6 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         if (res.actividadRecurrente === 'Sí' || res.recurrenteId || res.serieRecurrente) {
-                                          // For recurring events, open the detail modal with full confirmation
-                                          // so user can select whether to delete single session or the whole series
                                           onSelectReservation(res);
                                         } else if (onRequestDelete) {
                                           onRequestDelete(res);
@@ -1577,31 +1721,34 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                                 </div>
                               </div>
 
-                              {/* Very short layout (single condensed block) */}
+                              {/* Adaptive Text Layout based on Card Height (clean title-only face) */}
                               {isVeryShort ? (
-                                <div className="flex flex-col justify-center overflow-hidden">
-                                  <div className={titleClass}>
-                                    {res.tipoActividad}
+                                /* Very short layout (height < 44px, e.g. 30 min) */
+                                <div className="flex flex-col justify-center min-w-0 overflow-hidden leading-tight">
+                                  <div className="text-[9px] font-bold text-slate-900 truncate leading-tight" title={mainTitle}>
+                                    {displayTitle}
                                   </div>
-                                  {res.descripcion && (
-                                    <div className={descClass}>
-                                      {res.descripcion}
-                                    </div>
-                                  )}
+                                </div>
+                              ) : isShort ? (
+                                /* Short layout (44px - 68px, e.g. 45-60 min) */
+                                <div className="flex-1 min-h-0 flex flex-col justify-center overflow-hidden">
+                                  <div className="text-[9.5px] font-bold text-slate-900 leading-tight line-clamp-2 break-words" title={mainTitle}>
+                                    {displayTitle}
+                                  </div>
+                                </div>
+                              ) : isMedium ? (
+                                /* Medium layout (68px - 110px, e.g. 1.5 - 2 hrs) */
+                                <div className="flex-1 min-h-0 flex flex-col justify-start overflow-hidden">
+                                  <div className="text-[10px] sm:text-[10.5px] font-bold text-slate-900 leading-tight line-clamp-3 sm:line-clamp-4 break-words" title={mainTitle}>
+                                    {displayTitle}
+                                  </div>
                                 </div>
                               ) : (
-                                <div className="flex-1 min-h-0 flex flex-col justify-start space-y-0.5 overflow-hidden">
-                                  {/* Line 1: Activity / Reservation Type */}
-                                  <div className={titleClass}>
-                                    {res.tipoActividad}
+                                /* Tall layout (height >= 110px, e.g. 2+ hrs) */
+                                <div className="flex-1 min-h-0 flex flex-col justify-start overflow-hidden">
+                                  <div className="text-[10.5px] sm:text-[11px] font-bold text-slate-900 leading-snug line-clamp-5 sm:line-clamp-6 break-words" title={mainTitle}>
+                                    {displayTitle}
                                   </div>
-
-                                  {/* Line 2: Activity Description */}
-                                  {res.descripcion && (
-                                    <div className={descClass}>
-                                      {res.descripcion}
-                                    </div>
-                                  )}
                                 </div>
                               )}
                             </div>
@@ -1660,6 +1807,113 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
           />
         </Suspense>
       )}
+
+      {/* Floating Hover Card Popup (Appears on Mouse Over with full details) */}
+      {hoveredCardInfo && !draggedReservation && (() => {
+        const hoverRes = hoveredCardInfo.res;
+        const hoverVisual = getReservationTypeVisual(hoverRes);
+        const hoverTitle = (hoverRes.descripcion && hoverRes.descripcion.trim()) ? hoverRes.descripcion.trim() : hoverRes.tipoActividad;
+        const hoverDisplayTitle = formatDisplayTitle(hoverTitle);
+        const isConflict = hoveredCardInfo.isConflict;
+
+        return (
+          <div
+            style={getHoverPopupStyle(hoveredCardInfo.rect)}
+            className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-slate-300 p-3 text-slate-800 animate-in fade-in zoom-in-95 duration-150 transition-all select-none ring-1 ring-black/10"
+          >
+            {/* Top color stripe */}
+            <div
+              className="h-1.5 -mx-3 -mt-3 mb-2.5 rounded-t-xl"
+              style={{ backgroundColor: hoverVisual.accent }}
+            />
+
+            {/* Header: Time, Space & Status */}
+            <div className="flex items-center justify-between gap-1.5 mb-2 pb-1.5 border-b border-slate-100">
+              <div className="flex items-center space-x-1.5 font-mono text-xs font-bold text-slate-900 tabular-nums">
+                <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span>{hoverRes.horaInicio} – {hoverRes.horaFin}</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                {isConflict && (
+                  <span className="text-[9px] bg-rose-600 text-white px-1.5 py-0.5 rounded font-black uppercase tracking-tight flex items-center gap-0.5">
+                    <AlertTriangle className="w-2.5 h-2.5" />
+                    <span>Topamiento</span>
+                  </span>
+                )}
+                {hoverRes.importante === 'Sí' && (
+                  <span className="text-[9px] bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
+                    <Flame className="w-2.5 h-2.5 text-amber-600" />
+                    <span>Importante</span>
+                  </span>
+                )}
+                {hoverRes.solicitudEliminacion && (
+                  <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-tight">
+                    ⏳ En espera
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Activity Title */}
+            <div className="mb-2">
+              <h4 className="text-xs font-bold text-slate-900 leading-snug line-clamp-3">
+                {hoverDisplayTitle}
+              </h4>
+            </div>
+
+            {/* Details Box */}
+            <div className="bg-slate-50/90 rounded-lg p-2 space-y-1.5 border border-slate-200/70 text-[11px]">
+              {/* Tipo de Reserva */}
+              <div className="flex items-center justify-between gap-1.5">
+                <span className="text-slate-500 font-medium">Tipo de reserva:</span>
+                <span className={`font-semibold px-2 py-0.5 rounded-full text-[10px] border ${hoverVisual.bgClass} ${hoverVisual.borderClass} ${hoverVisual.softTextClass}`}>
+                  {hoverRes.tipoActividad || hoverVisual.label}
+                </span>
+              </div>
+
+              {/* Responsable */}
+              <div className="flex items-start justify-between gap-2 pt-1 border-t border-slate-200/50">
+                <span className="text-slate-500 font-medium shrink-0 flex items-center gap-1">
+                  <User className="w-3 h-3 text-slate-400" />
+                  <span>Responsable:</span>
+                </span>
+                <span className="font-bold text-slate-800 text-right truncate max-w-[150px]" title={hoverRes.responsable}>
+                  {hoverRes.responsable || 'No especificado'}
+                </span>
+              </div>
+
+              {/* Espacio */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500 font-medium shrink-0 flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-slate-400" />
+                  <span>Espacio:</span>
+                </span>
+                <span className="font-semibold text-slate-700 text-right truncate max-w-[150px]">
+                  {hoverRes.espacio}
+                </span>
+              </div>
+
+              {/* Contact Phone if present */}
+              {hoverRes.telefonoContacto && (
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/50">
+                  <span className="text-slate-500 font-medium shrink-0 flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-slate-400" />
+                    <span>Teléfono:</span>
+                  </span>
+                  <span className="font-mono text-[10.5px] font-semibold text-slate-700">
+                    {hoverRes.telefonoContacto}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Footer instruction */}
+            <div className="mt-2 pt-1.5 border-t border-slate-100 text-[10px] text-slate-500 flex items-center justify-between">
+              <span>💡 Clic para ver detalles completos</span>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

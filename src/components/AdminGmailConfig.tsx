@@ -17,7 +17,10 @@ import {
   CalendarDays,
   Check,
   FileText,
-  Printer
+  Printer,
+  Building2,
+  BookmarkCheck,
+  Tag
 } from 'lucide-react';
 import {
   DEFAULT_GMAIL_SENDER,
@@ -36,7 +39,9 @@ import {
   WEEKDAY_LABELS,
   AlcanceActividadesTipo,
   calculateActivityDatesForDispatchDate,
-  calculateAllScheduledActivityDates
+  calculateAllScheduledActivityDates,
+  EmailDispatchFilterMode,
+  isLoanReservation
 } from '../services/gmailDispatchService';
 import { ActivityTypeItem, LoanType } from '../types';
 import { format, addMonths } from 'date-fns';
@@ -915,13 +920,19 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
             )}
 
             {/* Callout de Planillas PDF Oficiales */}
-            <div className="mt-2 p-2.5 bg-blue-100/70 border border-blue-300 rounded-xl space-y-1">
-              <span className="text-[11px] font-bold text-blue-950 flex items-center gap-1.5">
-                <Printer className="w-3.5 h-3.5 text-blue-700" />
-                <span>Adjuntos Oficiales para Impresión:</span>
-              </span>
+            <div className="mt-2 p-3 bg-blue-100/80 border border-blue-300 rounded-xl space-y-1.5 shadow-2xs">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <span className="text-[11px] font-bold text-blue-950 flex items-center gap-1.5">
+                  <Printer className="w-3.5 h-3.5 text-blue-700" />
+                  <span>Adjuntos Oficiales para Impresión:</span>
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-blue-300 text-[10px] font-bold text-blue-900 shadow-2xs">
+                  <FileText className="w-3 h-3 text-blue-600" />
+                  <span>Hoja: 8.5" × 13" (Oficio)</span>
+                </span>
+              </div>
               <p className="text-[11px] text-blue-900 leading-relaxed">
-                El despacho automático generará y adjuntará <strong>una planilla PDF separada por cada día</strong> que se envíe, diagramada en formato vectorizado A4 de alta definición y contraste óptimo para imprimir directamente en portería y administración.
+                El despacho automático generará y adjuntará <strong>una planilla PDF separada por cada día</strong> que se envíe, configurada y diagramada específicamente para imprimirse en <strong>hoja de 8.5 × 13 pulgadas (tamaño Oficio / Folio)</strong> en formato vectorizado de alta definición y contraste óptimo para imprimir directamente en portería y administración.
               </p>
             </div>
           </div>
@@ -1096,61 +1107,167 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
           </div>
         </div>
 
-        {/* 2. Filtro de tipos predeterminado */}
-        <div className="space-y-3 pt-2 border-t border-slate-100">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-1.5">
-              <Filter className="w-4 h-4 text-blue-600" />
-              <span>Tipos de Actividad Predeterminados</span>
-            </label>
-            <button
-              type="button"
-              onClick={() => setConfig(prev => ({ ...prev, selectedActivityTypes: ['ALL'] }))}
-              className="text-xs text-blue-600 hover:text-blue-800 font-semibold cursor-pointer underline"
-            >
-              Marcar Todos
-            </button>
+        {/* 2. Filtro de Despacho por Correo: Préstamos o Actividades Seleccionadas */}
+        <div className="space-y-4 pt-2 border-t border-slate-100">
+          <div>
+            <div className="flex items-center space-x-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center space-x-1.5">
+                <Tag className="w-4 h-4 text-blue-600" />
+                <span>2. Filtro de Despacho por Correo (¿Qué reservas se envían?)</span>
+              </label>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                Regla de Despacho
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Configura el alcance del correo: el despacho puede restringirse <strong>únicamente a préstamos</strong> o a los tipos de actividades que selecciones específicamente.
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-            <button
-              type="button"
-              onClick={() => setConfig(prev => ({ ...prev, selectedActivityTypes: ['ALL'] }))}
-              className={`flex items-center justify-between p-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer text-left ${
-                config.selectedActivityTypes.includes('ALL')
-                  ? 'bg-blue-50 border-blue-400 text-blue-800 shadow-2xs'
-                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              <span>Todos los Tipos</span>
-              {config.selectedActivityTypes.includes('ALL') && (
-                <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
-              )}
-            </button>
-
-            {activityTypes.map(act => {
-              const isSelected =
-                !config.selectedActivityTypes.includes('ALL') &&
-                config.selectedActivityTypes.includes(act.name);
-
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              {
+                id: 'solo_prestamos' as EmailDispatchFilterMode,
+                title: 'Solo Préstamos',
+                badge: 'Recomendado',
+                badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                icon: Building2,
+                desc: 'Envía única y exclusivamente reservas que correspondan a préstamos (CAM, Iglesias, Clubes, Mobiliario o con tipo de préstamo asignado).'
+              },
+              {
+                id: 'prestamos_y_seleccionadas' as EmailDispatchFilterMode,
+                title: 'Préstamos o Actividades Seleccionadas',
+                badge: 'Flexible',
+                badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
+                icon: BookmarkCheck,
+                desc: 'Envía todos los préstamos más los tipos de actividad adicionales que marques en la lista inferior.'
+              },
+              {
+                id: 'actividades_seleccionadas' as EmailDispatchFilterMode,
+                title: 'Solo Actividades Seleccionadas',
+                badge: 'Estricto',
+                badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
+                icon: Filter,
+                desc: 'Envía exclusivamente los tipos de actividades que tengas expresamente seleccionados abajo.'
+              },
+              {
+                id: 'todas' as EmailDispatchFilterMode,
+                title: 'Todas las Actividades',
+                badge: 'Sin filtro',
+                badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
+                icon: CheckCircle2,
+                desc: 'Incluye todas las actividades programadas para la fecha sin ningún filtro de categoría.'
+              }
+            ].map(item => {
+              const Icon = item.icon;
+              const isSelected = (config.dispatchFilterMode || 'solo_prestamos') === item.id;
               return (
                 <button
-                  key={act.id}
+                  key={item.id}
                   type="button"
-                  onClick={() => handleToggleActivityType(act.name)}
-                  className={`flex items-center justify-between p-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer text-left truncate ${
+                  onClick={() => setConfig(prev => ({ ...prev, dispatchFilterMode: item.id }))}
+                  className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
                     isSelected
-                      ? 'bg-blue-50 border-blue-400 text-blue-800 shadow-2xs'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/10 ring-2 ring-blue-600/30'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
                   }`}
-                  title={act.name}
                 >
-                  <span className="truncate">{act.name}</span>
-                  {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 ml-1" />}
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-2">
+                      <div className={`p-1.5 rounded-xl ${isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-600'}`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        isSelected ? 'bg-white/20 text-white border-white/30' : item.badgeColor
+                      }`}>
+                        {item.badge}
+                      </span>
+                    </div>
+                    <div className="font-bold text-xs leading-snug mb-1">{item.title}</div>
+                    <p className={`text-[11px] leading-relaxed ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>
+                      {item.desc}
+                    </p>
+                  </div>
+                  {isSelected && (
+                    <div className="mt-2.5 pt-2 border-t border-white/20 flex items-center space-x-1 text-[11px] font-semibold text-blue-100">
+                      <Check className="w-3.5 h-3.5 text-white" />
+                      <span>Modo Activo</span>
+                    </div>
+                  )}
                 </button>
               );
             })}
           </div>
+
+          {/* Callout explicativo cuando está en modo Solo Préstamos */}
+          {(config.dispatchFilterMode || 'solo_prestamos') === 'solo_prestamos' && (
+            <div className="p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start space-x-2.5">
+              <Building2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <span className="font-bold">Regla activa: El correo está restringido estrictamente a Préstamos</span>
+                <p className="text-[11px] text-emerald-800 leading-relaxed">
+                  Tanto el despacho automático en segundo plano como las planillas PDF adjuntas procesarán únicamente reservas catalogadas como préstamos de espacios, salas o equipamiento (ej. CAM Adulto Mayor, Iglesias, Clubes, organizaciones comunitarias).
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Selector de tipos de actividad (visible o editable según modo) */}
+          {(config.dispatchFilterMode === 'prestamos_y_seleccionadas' || config.dispatchFilterMode === 'actividades_seleccionadas') && (
+            <div className="p-4 bg-slate-50 border border-blue-200 rounded-xl space-y-3 animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                  <Filter className="w-4 h-4 text-blue-600" />
+                  <span>
+                    {config.dispatchFilterMode === 'prestamos_y_seleccionadas'
+                      ? 'Actividades Adicionales Seleccionadas (además de Préstamos)'
+                      : 'Actividades Seleccionadas a Incluir'}
+                  </span>
+                </label>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfig(prev => ({ ...prev, selectedActivityTypes: activityTypes.map(a => a.name) }))}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold cursor-pointer underline"
+                  >
+                    Seleccionar Todas
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setConfig(prev => ({ ...prev, selectedActivityTypes: [] }))}
+                    className="text-xs text-slate-500 hover:text-slate-700 font-semibold cursor-pointer"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {activityTypes.map(act => {
+                  const isSelected = Array.isArray(config.selectedActivityTypes) &&
+                    (config.selectedActivityTypes.includes('ALL') || config.selectedActivityTypes.includes(act.name));
+
+                  return (
+                    <button
+                      key={act.id}
+                      type="button"
+                      onClick={() => handleToggleActivityType(act.name)}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer text-left truncate ${
+                        isSelected
+                          ? 'bg-blue-50 border-blue-400 text-blue-800 shadow-2xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                      title={act.name}
+                    >
+                      <span className="truncate">{act.name}</span>
+                      {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 ml-1" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 3. Plantilla de Asunto y Nota */}

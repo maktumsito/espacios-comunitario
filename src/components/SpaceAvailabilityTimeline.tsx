@@ -103,10 +103,10 @@ export const SpaceAvailabilityTimeline: React.FC<SpaceAvailabilityTimelineProps>
     return [...normalReservations, ...blockSlots].sort((a, b) => a.startMin - b.startMin);
   }, [allReservations, spaceBlocks, space, date, excludeReservationId, OP_START_MIN, OP_END_MIN]);
 
-  // Current selected user time in minutes
-  const selStartMin = useMemo(() => timeToMinutes(currentStartTime || '10:00'), [currentStartTime]);
+  // Current selected user time in minutes (predeterminado desde las 08:30)
+  const selStartMin = useMemo(() => timeToMinutes(currentStartTime || '08:30'), [currentStartTime]);
   const selEndMin = useMemo(() => {
-    const rawEnd = timeToMinutes(currentEndTime || '11:00');
+    const rawEnd = timeToMinutes(currentEndTime || '09:30');
     if (terminaDiaSiguiente && rawEnd <= selStartMin) {
       return rawEnd + 1440;
     }
@@ -122,10 +122,11 @@ export const SpaceAvailabilityTimeline: React.FC<SpaceAvailabilityTimelineProps>
     });
   }, [dayReservations, selStartMin, selEndMin]);
 
-  // Calculate free gap intervals during operational hours
+  // Calculate free gap intervals during operational hours (sugerencias desde las 08:30 horario regular)
   const freeSlots = useMemo<FreeSlot[]>(() => {
     const slots: FreeSlot[] = [];
-    let pointer = OP_START_MIN;
+    const REGULAR_START_MIN = 8 * 60 + 30; // 08:30 hrs
+    let pointer = REGULAR_START_MIN;
 
     for (const occ of dayReservations) {
       const occClampedStart = Math.max(OP_START_MIN, Math.min(OP_END_MIN, occ.startMin));

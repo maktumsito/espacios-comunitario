@@ -11,7 +11,7 @@ import { normalizeSpaceName } from '../data/spacesData';
 import { formatDateYYYYMMDD, parseDateToNoon } from '../utils/dateUtils';
 import { getFuzzyMatchIds } from '../utils/fuzzySearch';
 import { validateAndFormatChileanPhone } from '../utils/validationUtils';
-import { getReservationTypeVisual, RESERVATION_TYPE_LEGEND } from '../utils/reservationVisuals';
+import { getReservationTypeVisual, RESERVATION_TYPE_LEGEND, formatDisplayTitle } from '../utils/reservationVisuals';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -680,18 +680,19 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
             const isConflict = conflictReservationIds?.has(res.id);
             const liveState = getLiveStatus(res.horaInicio, res.horaFin);
             const isExpanded = expandedCards.has(res.id);
-            const phoneInfo = validateAndFormatChileanPhone(res.telefonoContacto);
             const existingRating = ratingByReservationId.get(res.id);
             const isRealizada = res.realizada === 'Sí';
             const typeVisual = getReservationTypeVisual(res);
             const isActionMenuOpen = activeActionMenuId === res.id;
+            const mainTitle = (res.descripcion && res.descripcion.trim()) ? res.descripcion.trim() : res.tipoActividad;
+            const displayTitle = formatDisplayTitle(mainTitle);
 
             return (
               <article
                 key={res.id}
                 id={`mobile-reservation-card-${res.id}`}
                 onClick={() => onSelectReservation(res)}
-                className={`relative bg-white rounded-2xl border transition-all overflow-hidden cursor-pointer ${
+                className={`relative bg-white rounded-xl border transition-all overflow-hidden cursor-pointer ${
                   isConflict
                     ? 'border-rose-300 ring-2 ring-rose-200/60 bg-rose-50/20'
                     : liveState?.status === 'live'
@@ -705,11 +706,11 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                   style={{ backgroundColor: isConflict ? '#e11d48' : typeVisual.accent }}
                 />
 
-                <div className="pl-4 pr-3.5 pt-3 pb-3 space-y-2.5">
+                <div className="pl-3.5 pr-3 py-2.5 space-y-2">
                   {/* Card Header: Time slot + Status */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center space-x-2">
-                      <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg text-slate-800 font-bold text-xs font-mono">
+                      <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-md text-slate-800 font-bold text-xs font-mono tabular-nums">
                         <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                         <span>{res.horaInicio} - {res.horaFin}</span>
                       </div>
@@ -746,85 +747,15 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
                   {/* Space & Activity Title */}
                   <div>
                     <div className="flex items-center space-x-2 mb-1">
-                      <span
-                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeVisual.bgClass} ${typeVisual.borderClass} ${typeVisual.softTextClass}`}
-                      >
-                        {typeVisual.label}
-                      </span>
-                      <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1 min-w-0">
+                      <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1.5 min-w-0">
                         <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: spaceColor }} />
                         <span className="truncate">{res.espacio}</span>
                       </span>
                     </div>
 
-                    <h4 className="text-sm font-bold text-slate-900 leading-snug">
-                      {res.descripcion || 'Sin descripción'}
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug line-clamp-2 break-words" title={mainTitle}>
+                      {displayTitle || 'Sin descripción'}
                     </h4>
-                  </div>
-
-                  {/* Responsible Person & Direct Contact Buttons */}
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1.5">
-                    <div className="flex items-center justify-between gap-1 text-xs">
-                      <div className="flex items-center space-x-1.5 text-slate-800 font-bold min-w-0">
-                        <User className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                        <span className="truncate">{res.responsable || 'Sin responsable'}</span>
-                      </div>
-                      {res.rut && (
-                        <span className="text-[11px] font-mono text-slate-400 shrink-0">
-                          {res.rut}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Quick direct contact links for mobile phone (Call / WhatsApp / Email) */}
-                    {(res.telefonoContacto || res.emailContacto) && (
-                      <div
-                        className="flex flex-wrap items-center gap-1.5 pt-1"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {res.telefonoContacto && (
-                          phoneInfo.isValid ? (
-                            <>
-                              <a
-                                href={phoneInfo.telUrl}
-                                className="min-h-[36px] inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold transition"
-                                title={`Llamar a ${phoneInfo.formatted}`}
-                              >
-                                <Phone className="w-3 h-3 text-emerald-600" />
-                                <span>Llamar</span>
-                              </a>
-                              <a
-                                href={phoneInfo.whatsappUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="min-h-[36px] inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-green-800 text-[11px] font-bold transition"
-                                title={`Abrir WhatsApp con ${phoneInfo.formatted}`}
-                              >
-                                <MessageCircle className="w-3 h-3 text-green-600" />
-                                <span>WhatsApp</span>
-                              </a>
-                            </>
-                          ) : (
-                            <span
-                              className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-medium"
-                              title={phoneInfo.error || 'Número de teléfono incompleto'}
-                            >
-                              <Phone className="w-3 h-3 text-rose-500 shrink-0" />
-                              <span>Teléfono no válido ({res.telefonoContacto})</span>
-                            </span>
-                          )
-                        )}
-                        {res.emailContacto && (
-                          <a
-                            href={`mailto:${res.emailContacto}`}
-                            className="min-h-[36px] inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-[11px] font-bold transition"
-                          >
-                            <Mail className="w-3 h-3 text-blue-600" />
-                            <span>Correo</span>
-                          </a>
-                        )}
-                      </div>
-                    )}
                   </div>
 
                   {/* Badges and metadata */}

@@ -97,7 +97,7 @@ export function docToBase64(doc: jsPDF): string {
 
 /**
  * Generates the official printable daily activities schedule PDF for a specific day.
- * Formatted specifically for clear paper printing (A4 portrait, high contrast, clean tables).
+ * Formatted specifically for clear paper printing on 8.5" x 13" (Oficio / Folio) portrait, high contrast, clean tables.
  */
 export async function generateDailySchedulePdf(options: DailySchedulePdfOptions): Promise<jsPDF> {
   const { jsPDF, autoTable } = await loadPdfLibraries();
@@ -112,14 +112,15 @@ export async function generateDailySchedulePdf(options: DailySchedulePdfOptions)
     generatedBy = 'Centro Comunitario Diaguitas'
   } = options;
 
+  // Hoja configurada en 8.5 x 13 pulgadas = 215.9 mm x 330.2 mm (Tamaño Oficio / Folio tradicional)
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: 'a4'
+    format: [215.9, 330.2]
   });
 
-  const pageWidth = doc.internal.pageSize.getWidth(); // ~210 mm
-  const pageHeight = doc.internal.pageSize.getHeight(); // ~297 mm
+  const pageWidth = doc.internal.pageSize.getWidth(); // ~215.9 mm
+  const pageHeight = doc.internal.pageSize.getHeight(); // ~330.2 mm
   const margin = 14;
   let currentY = 16;
 
@@ -259,7 +260,7 @@ export async function generateDailySchedulePdf(options: DailySchedulePdfOptions)
   const now = new Date();
   const emissionTimestamp = format(now, 'dd-MM-yyyy HH:mm');
   doc.text(
-    `Documento oficial para impresión diaria | Total actividades: ${filteredDailyReservations.length} | Generado: ${emissionTimestamp}`,
+    `Documento oficial para impresión diaria (Hoja 8.5" × 13" Oficio) | Total actividades: ${filteredDailyReservations.length} | Generado: ${emissionTimestamp}`,
     margin,
     currentY
   );
@@ -354,7 +355,7 @@ export async function generateDailySchedulePdf(options: DailySchedulePdfOptions)
     );
   } else {
     for (const { spaceName, bookings } of visibleSpaces) {
-      if (currentY > 255) {
+      if (currentY > pageHeight - 42) {
         doc.addPage();
         currentY = 16;
       }
@@ -432,7 +433,7 @@ export async function generateDailySchedulePdf(options: DailySchedulePdfOptions)
     doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184); // #94a3b8
     doc.text(
-      `Centro Comunitario Diaguitas - Planilla Oficial de Actividades (${formatDateDDMMYYYY(targetDate)})   |   Página ${i} de ${totalPages}`,
+      `Centro Comunitario Diaguitas - Planilla Oficial de Actividades (${formatDateDDMMYYYY(targetDate)})   |   Papel: 8.5" × 13" (Oficio)   |   Página ${i} de ${totalPages}`,
       pageWidth / 2,
       pageHeight - 8,
       { align: 'center' }

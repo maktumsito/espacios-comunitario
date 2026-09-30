@@ -56,6 +56,7 @@ import {
   UserPlus,
   KeyRound,
   Lock,
+  Unlock,
   Eye,
   EyeOff,
   Database,
@@ -388,6 +389,38 @@ export const AdminView: React.FC<AdminViewProps> = ({
     });
   }, [effectiveEquipment, equipmentCategoryFilter, equipmentSearchQuery]);
 
+  // Space ordering lock/toggle state (default false / locked)
+  const [allowSpaceReorder, setAllowSpaceReorder] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('allow_reorder_spaces');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleSpaceReorder = () => {
+    setAllowSpaceReorder((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('allow_reorder_spaces', String(next));
+      } catch {}
+      window.dispatchEvent(new CustomEvent('app_spaces_reorder_toggled', { detail: next }));
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent<boolean>;
+      if (typeof customEvent.detail === 'boolean') {
+        setAllowSpaceReorder(customEvent.detail);
+      }
+    };
+    window.addEventListener('app_spaces_reorder_toggled', handleSync);
+    return () => window.removeEventListener('app_spaces_reorder_toggled', handleSync);
+  }, []);
+
   // Drag & Drop State for Space Cards Reordering
   const [draggedSpaceIndex, setDraggedSpaceIndex] = useState<number | null>(null);
   const [dragOverSpaceIndex, setDragOverSpaceIndex] = useState<number | null>(null);
@@ -461,13 +494,17 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   // Drag and Drop handlers for Spaces
   const handleSpaceDragStart = (e: React.DragEvent, index: number) => {
+    if (!allowSpaceReorder) {
+      e.preventDefault();
+      return;
+    }
     setDraggedSpaceIndex(index);
     e.dataTransfer.setData('text/plain', `SPACE_${index}`);
     e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleSpaceDragOver = (e: React.DragEvent, index: number) => {
-    if (draggedSpaceIndex === null) return;
+    if (!allowSpaceReorder || draggedSpaceIndex === null) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverSpaceIndex(index);
@@ -475,7 +512,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   const handleSpaceDrop = (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
-    if (draggedSpaceIndex === null || draggedSpaceIndex === targetIndex || !onReorderSpaces) {
+    if (!allowSpaceReorder || draggedSpaceIndex === null || draggedSpaceIndex === targetIndex || !onReorderSpaces) {
       setDraggedSpaceIndex(null);
       setDragOverSpaceIndex(null);
       return;
@@ -491,7 +528,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   };
 
   const handleMoveSpace = (index: number, direction: 'up' | 'down') => {
-    if (!onReorderSpaces) return;
+    if (!allowSpaceReorder || !onReorderSpaces) return;
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= spaces.length) return;
 
@@ -1221,17 +1258,58 @@ export const AdminView: React.FC<AdminViewProps> = ({
             )}
           </div>
 
-          {/* Space Management Banner with DnD hint */}
+          {/* Space Management Banner with DnD hint and toggle */}
           <div className="bg-blue-50/60 border border-blue-200/70 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs text-blue-900">
             <div className="flex items-center space-x-2">
-              <Move className="w-4 h-4 text-blue-600 shrink-0" />
+              {allowSpaceReorder ? (
+                <Move className="w-4 h-4 text-blue-600 shrink-0" />
+              ) : (
+                <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+              )}
               <span>
-                <strong>Reordenamiento Drag & Drop:</strong> Arrastra las tarjetas para definir el orden en que se visualizan los espacios en el Horario Diario y el Calendario.
+                {allowSpaceReorder ? (
+                  <>
+                    <strong>Reordenamiento Drag & Drop:</strong> Arrastra las tarjetas para definir el orden en que se visualizan los espacios en el Horario Diario y el Calendario.
+                  </>
+                ) : (
+                  <>
+                    <strong>Orden de salas bloqueado:</strong> El reordenamiento de espacios está desactivado para prevenir movimientos involuntarios.
+                  </>
+                )}
               </span>
             </div>
-            <span className="text-[11px] font-semibold text-blue-700 bg-white px-2.5 py-1 rounded-lg border border-blue-200">
-              Total: {spaces.length} espacios
-            </span>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                id="btn-admin-toggle-reorder-spaces"
+                onClick={handleToggleSpaceReorder}
+                className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl text-xs font-bold border transition shadow-2xs cursor-pointer active:scale-95 ${
+                  allowSpaceReorder
+                    ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                    : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                }`}
+                title={
+                  allowSpaceReorder
+                    ? 'Desactivar ordenar salas: Bloquea las tarjetas para que no se muevan por error'
+                    : 'Activar ordenar salas: Permite arrastrar tarjetas o usar los botones de subir/bajar'
+                }
+              >
+                {allowSpaceReorder ? (
+                  <>
+                    <Unlock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Ordenar salas: <strong>Activado</strong> (Desactivar)</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Ordenar salas: <strong>Desactivado</strong> (Activar)</span>
+                  </>
+                )}
+              </button>
+              <span className="text-[11px] font-semibold text-blue-700 bg-white px-2.5 py-1 rounded-lg border border-blue-200">
+                Total: {spaces.length} espacios
+              </span>
+            </div>
           </div>
 
           {/* Spaces Grid (Draggable Cards) */}
@@ -1243,14 +1321,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
               return (
                 <div
                   key={space.id}
-                  draggable
+                  draggable={allowSpaceReorder}
                   onDragStart={(e) => handleSpaceDragStart(e, index)}
                   onDragOver={(e) => handleSpaceDragOver(e, index)}
                   onDragLeave={() => {
                     if (dragOverSpaceIndex === index) setDragOverSpaceIndex(null);
                   }}
                   onDrop={(e) => handleSpaceDrop(e, index)}
-                  className={`bg-white border rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4 transition-all cursor-grab active:cursor-grabbing relative group ${
+                  className={`bg-white border rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4 transition-all ${
+                    allowSpaceReorder ? 'cursor-grab active:cursor-grabbing' : ''
+                  } relative group ${
                     isDropTarget
                       ? 'border-blue-500 ring-2 ring-blue-400 bg-blue-50/30 scale-[1.02] z-20'
                       : isDragged
@@ -1273,24 +1353,26 @@ export const AdminView: React.FC<AdminViewProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center space-x-1">
-                        <button
-                          onClick={() => handleMoveSpace(index, 'up')}
-                          disabled={index === 0}
-                          title="Subir orden"
-                          className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer"
-                        >
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleMoveSpace(index, 'down')}
-                          disabled={index === spaces.length - 1}
-                          title="Bajar orden"
-                          className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer"
-                        >
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {allowSpaceReorder && (
+                        <div className="flex items-center space-x-1">
+                          <button
+                            onClick={() => handleMoveSpace(index, 'up')}
+                            disabled={index === 0}
+                            title="Subir orden"
+                            className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleMoveSpace(index, 'down')}
+                            disabled={index === spaces.length - 1}
+                            title="Bajar orden"
+                            className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-20 cursor-pointer"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">

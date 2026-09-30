@@ -22,6 +22,8 @@ interface ReservationModalFooterProps {
   isAutosaving: boolean;
   autosaveLastSavedAt: number | null;
   formData: Partial<Reservation>;
+  setFormData?: React.Dispatch<React.SetStateAction<Partial<Reservation>>>;
+  setDescargarCartaAlCrear?: (val: boolean) => void;
   setShowCommitmentLetterModal: (show: boolean) => void;
   isWizardMode: boolean;
   wizardStep: 1 | 2 | 3;
@@ -57,6 +59,8 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
   isAutosaving,
   autosaveLastSavedAt,
   formData,
+  setFormData,
+  setDescargarCartaAlCrear,
   setShowCommitmentLetterModal,
   isWizardMode,
   wizardStep,
@@ -150,7 +154,7 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
       </div>
 
       <div className="flex items-center space-x-2 sm:space-x-3">
-        {isCommitmentLetterEligible(formData.tipoActividad, formData.tipoPrestamo) && (
+        {(isCommitmentLetterEligible(formData.tipoActividad, formData.tipoPrestamo) || formData.requiereCartaCompromiso) ? (
           <button
             id="btn-footer-carta-compromiso"
             type="button"
@@ -161,6 +165,26 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
             <FileSignature className="w-3.5 h-3.5 text-amber-800" />
             <span className="hidden sm:inline">Carta de Compromiso</span>
             <span className="sm:hidden">Carta</span>
+          </button>
+        ) : (
+          <button
+            id="btn-footer-activar-carta-compromiso"
+            type="button"
+            onClick={() => {
+              if (setFormData) {
+                setFormData((prev) => ({ ...prev, requiereCartaCompromiso: true }));
+              }
+              if (setDescargarCartaAlCrear) {
+                setDescargarCartaAlCrear(true);
+              }
+              setShowCommitmentLetterModal(true);
+            }}
+            className="px-3 py-2 rounded-xl bg-white hover:bg-amber-50/80 border border-slate-200 hover:border-amber-300 text-slate-700 hover:text-amber-950 text-xs font-bold shadow-2xs transition flex items-center space-x-1.5 cursor-pointer"
+            title="Activar Carta de Compromiso con 1 clic para esta actividad y previsualizar"
+          >
+            <FileSignature className="w-3.5 h-3.5 text-amber-600" />
+            <span className="hidden sm:inline">+ Carta Compromiso</span>
+            <span className="sm:hidden">+ Carta</span>
           </button>
         )}
         {isWizardMode && wizardStep > 1 && (

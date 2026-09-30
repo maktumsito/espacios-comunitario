@@ -20,7 +20,8 @@ import {
   Lock,
   XCircle,
   Check,
-  Ban
+  Ban,
+  Mail
 } from 'lucide-react';
 import { CommitmentLetterModal } from './CommitmentLetterModal';
 import { getPhoneContactActions } from '../utils/phoneUtils';
@@ -53,6 +54,7 @@ interface ReservationDetailModalProps {
   currentUser?: AuthUser | null;
   onAuthorizeDelete?: (reservation: Reservation) => void;
   onRejectDeleteRequest?: (reservation: Reservation) => void;
+  onOpenGmailDispatch?: (date: string, filterMode?: 'solo_prestamos' | 'todas', reservationId?: string) => void;
 }
 
 export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
@@ -70,7 +72,8 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
   allReservations = [],
   currentUser,
   onAuthorizeDelete,
-  onRejectDeleteRequest
+  onRejectDeleteRequest,
+  onOpenGmailDispatch
 }) => {
   const [showCommitmentLetter, setShowCommitmentLetter] = React.useState(false);
 
@@ -610,8 +613,8 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
           </div>
         )}
 
-        {/* Carta de Compromiso Oficial Section (Solo activa para Ensayo, Charla, Préstamo, Cumpleaños, Otros o con documento ya adjunto) */}
-        {(isCommitmentLetterEligible(reservation.tipoActividad, reservation.tipoPrestamo) || reservation.cartaCompromisoAdjunta) && (
+        {/* Carta de Compromiso Oficial Section (Activa para Préstamo, Cumpleaños, si fue activada, o con documento adjunto) */}
+        {(isCommitmentLetterEligible(reservation.tipoActividad, reservation.tipoPrestamo) || reservation.requiereCartaCompromiso || reservation.cartaCompromisoAdjunta) && (
           <CommitmentLetterCard
             reservation={reservation}
             allReservations={allReservations}
@@ -701,7 +704,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
               </span>
             )}
 
-            {(isCommitmentLetterEligible(reservation.tipoActividad, reservation.tipoPrestamo) || reservation.cartaCompromisoAdjunta) && (
+            {(isCommitmentLetterEligible(reservation.tipoActividad, reservation.tipoPrestamo) || reservation.requiereCartaCompromiso || reservation.cartaCompromisoAdjunta) && (
               <button
                 id="btn-detail-carta-compromiso"
                 type="button"
@@ -712,6 +715,29 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
               >
                 <FileSignature className="w-4 h-4 text-slate-950" />
                 <span>Carta Compromiso</span>
+              </button>
+            )}
+
+            {onOpenGmailDispatch && (
+              <button
+                id="btn-detail-dispatch-email"
+                type="button"
+                aria-label="Despachar esta reserva por correo electrónico"
+                onClick={() => {
+                  onClose();
+                  const isLoan = Boolean(reservation.tipoPrestamo && reservation.tipoPrestamo.trim() !== '') ||
+                    Boolean(reservation.tipoActividad && /pr[eé]stamo/i.test(reservation.tipoActividad));
+                  onOpenGmailDispatch(
+                    reservation.fecha,
+                    isLoan ? 'solo_prestamos' : 'todas',
+                    reservation.id
+                  );
+                }}
+                className="flex items-center space-x-1.5 text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 font-bold px-3 py-2 rounded-xl transition shadow-xs cursor-pointer"
+                title="Despachar esta reserva por correo electrónico oficial"
+              >
+                <Mail className="w-4 h-4 text-blue-600" />
+                <span>Despachar por Correo</span>
               </button>
             )}
           </div>

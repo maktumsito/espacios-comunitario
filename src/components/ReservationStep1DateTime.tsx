@@ -325,16 +325,21 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
-          <label htmlFor="input-reserva-inicio" className="font-semibold text-slate-700 flex items-center space-x-1.5">
-            <Clock className="w-3.5 h-3.5 text-blue-500" />
-            <span>Hora Inicio *</span>
+          <label htmlFor="input-reserva-inicio" className="font-semibold text-slate-700 flex items-center justify-between">
+            <span className="flex items-center space-x-1.5">
+              <Clock className="w-3.5 h-3.5 text-blue-500" />
+              <span>Hora Inicio *</span>
+            </span>
+            <span className="text-[10px] font-normal text-slate-500">
+              Estándar: 08:30
+            </span>
           </label>
           <input
             id="input-reserva-inicio"
             aria-label="Hora de inicio de la reserva"
             type="time"
             required
-            value={formData.horaInicio || '10:00'}
+            value={formData.horaInicio || '08:30'}
             onChange={(e) => {
               const newStart = e.target.value;
               setFormData(prev => ({
@@ -348,6 +353,9 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
                 : 'border-slate-200 focus:ring-blue-500'
             }`}
           />
+          <p className="text-[10px] text-slate-500">
+            Carga predeterminada desde las 08:30. Si requiere un horario más temprano, ingréselo de manera manual.
+          </p>
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
@@ -402,8 +410,8 @@ export const ReservationStep1DateTime: React.FC<ReservationStep1DateTimeProps> =
           <SpaceAvailabilityTimeline
             space={formData.espacio || availableSpaces[0]?.name || ''}
             date={formData.fecha || editingReservation?.fecha || ''}
-            currentStartTime={formData.horaInicio || '10:00'}
-            currentEndTime={formData.horaFin || '11:00'}
+            currentStartTime={formData.horaInicio || '08:30'}
+            currentEndTime={formData.horaFin || '09:30'}
             allReservations={allReservations}
             spaceBlocks={spaceBlocks}
             excludeReservationId={editingReservation?.id}
