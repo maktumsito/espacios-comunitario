@@ -1,3 +1,5 @@
+import { isDispatchableReservation } from './activityDispatchSelection';
+import type { Table, UserOptions } from 'jspdf-autotable';
 import type { jsPDF } from 'jspdf';
 import { loadPdfLibraries } from './loadPdfLibraries';
 import { format, parseISO, addDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
@@ -97,7 +99,7 @@ export function docToBase64(doc: jsPDF): string {
 
 /**
  * Generates the official printable daily activities schedule PDF for a specific day.
- * Formatted specifically for clear paper printing on 8.5" x 13" (Oficio / Folio) portrait, high contrast, clean tables.
+ * Formatted specifically for clear paper printing on 8.5" x 13" (Oficio / Folio) landscape, high contrast, clean tables.
  */
 export async function generateDailySchedulePdf(options: DailySchedulePdfOptions): Promise<jsPDF> {
   const { jsPDF, autoTable } = await loadPdfLibraries();
@@ -107,22 +109,22 @@ export async function generateDailySchedulePdf(options: DailySchedulePdfOptions)
     spaces = SPACES_LIST,
     selectedActivityTypes,
     onlyOccupiedSpaces = true,
-    include3DaysImportant = true,
+    include3DaysImportant = false,
     customNote,
     generatedBy = 'Centro Comunitario Diaguitas'
   } = options;
 
   // Hoja configurada en 8.5 x 13 pulgadas = 215.9 mm x 330.2 mm (Tamaño Oficio / Folio tradicional)
   const doc = new jsPDF({
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
     format: [215.9, 330.2]
   });
 
-  const pageWidth = doc.internal.pageSize.getWidth(); // ~215.9 mm
-  const pageHeight = doc.internal.pageSize.getHeight(); // ~330.2 mm
-  const margin = 14;
-  let currentY = 16;
+  const pageWidth = doc.internal.pageSize.getWidth(); // 330.2 mm
+  const pageHeight = doc.internal.pageSize.getHeight(); // 215.9 mm
+  const margin = 8;
+  let currentY = 11;
 
   // Target Date calculation
   let targetDate: Date;
@@ -135,11 +137,10 @@ export async function generateDailySchedulePdf(options: DailySchedulePdfOptions)
 
   // Filter reservations for this exact date
   const filteredDailyReservations = reservations.filter((r) => {
-    if (!r.fecha) return false;
+    if (!r.fecha || !isDispatchableReservation(r)) return false;
     if (r.fecha !== dateStr) return false;
     if (
       selectedActivityTypes &&
-      selectedActivityTypes.length > 0 &&
       !selectedActivityTypes.includes('ALL')
     ) {
       const actType = (r.tipoActividad || '').trim().toUpperCase();
@@ -279,7 +280,7 @@ export async function generateDailySchedulePdf(options: DailySchedulePdfOptions)
   doc.setDrawColor(15, 23, 42);
   doc.setLineWidth(0.6);
   doc.line(margin, currentY, pageWidth - margin, currentY);
-  currentY += 6;
+  currentY += 3;
 
   // 1. IMPORTANT UPCOMING ACTIVITIES (if any)
   if (include3DaysImportant && importantUpcomingReservations.length > 0) {
@@ -354,75 +355,69 @@ export async function generateDailySchedulePdf(options: DailySchedulePdfOptions)
       currentY + 4
     );
   } else {
-    for (const { spaceName, bookings } of visibleSpaces) {
-      if (currentY > pageHeight - 42) {
-        doc.addPage();
-        currentY = 16;
+    // One continuous full-width table avoids repeated space headers and unused gaps.
+    const entries = visibleSpaces.flatMap<{ spaceName: string; booking: Reservation | null }>(({ spaceName, bookings }) =>
+      bookings.length > 0 ? bookings.map(booking => ({ spaceName, booking })) : [{ spaceName, booking: null }]
+    );
+    const rows = entries.map(({ spaceName, booking: b }) => {
+      if (!b) return [spaceName, '-', 'Sin reservas programadas', '-'];
+      const equipment = b.equipamientoSolicitado?.length
+        ? '\nEquipamiento: ' + b.equipamientoSolicitado.map(e => e.equipmentName + ' (x' + e.quantity + ')').join(', ')
+        : '';
+      return [
+        spaceName,
+        (b.horaInicio || '') + ' - ' + (b.horaFin || ''),
+        (b.tipoActividad || 'ACTIVIDAD').toUpperCase() + (b.importante === 'Sí' ? ' [IMPORTANTE]' : '')
+          + (b.descripcion ? '\n' + b.descripcion : '') + equipment
+          + (b.comentarios ? '\nNota: ' + b.comentarios : ''),
+        b.responsable || '-'
+      ];
+    });
+    const tableWidth = pageWidth - margin * 2;
+    const fontSize = rows.length <= 10 ? 12 : rows.length <= 18 ? 10.5 : 9;
+    const tableOptions: UserOptions = {
+      startY: currentY,
+      margin: { left: margin, right: margin, top: margin, bottom: 14 },
+      tableWidth,
+      head: [['Espacio', 'Horario', 'Actividad / Observaciones / Equipamiento', 'Responsable']],
+      body: rows,
+      theme: 'grid',
+      rowPageBreak: 'avoid',
+      styles: { fontSize, cellPadding: 2.5, overflow: 'linebreak', valign: 'middle', lineWidth: 0.2, lineColor: [148, 163, 184], textColor: [15, 23, 42] },
+      headStyles: { fillColor: [226, 232, 240], textColor: [15, 23, 42], fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: tableWidth * 0.16, fontStyle: 'bold' },
+        1: { cellWidth: tableWidth * 0.13, font: 'courier' },
+        2: { cellWidth: tableWidth * 0.49 },
+        3: { cellWidth: tableWidth * 0.22 }
       }
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9.5);
-      doc.setTextColor(71, 85, 105); // #475569
-      doc.text(spaceName.toUpperCase(), margin, currentY);
-      currentY += 2;
-
-      const rows =
-        bookings.length === 0
-          ? [['-', 'Sin reservas programadas', '-', '-']]
-          : bookings.map((b) => {
-              const isImp = b.importante === 'Sí';
-              const eqText =
-                b.equipamientoSolicitado && b.equipamientoSolicitado.length > 0
-                  ? `\n[Equipamiento (${b.equipamientoSolicitado.reduce((acc, curr) => acc + curr.quantity, 0)}): ${b.equipamientoSolicitado.map((e) => `${e.equipmentName} (x${e.quantity})`).join(', ')}]`
-                  : '';
-              const actText = `${(b.tipoActividad || 'ACTIVIDAD').toUpperCase()}${isImp ? ' [★ IMPORTANTE]' : ''}${b.descripcion ? '\n' + b.descripcion.toUpperCase() : ''}${eqText}${b.comentarios ? '\nNota: ' + b.comentarios : ''}`;
-              return [
-                `${b.horaInicio || ''}-${b.horaFin || ''}`,
-                actText,
-                (b.responsable || '-').toLowerCase(),
-                formatDateDDMMYYYY(b.fecha || dateStr)
-              ];
-            });
-
-      autoTable(doc, {
-        startY: currentY,
-        margin: { left: margin, right: margin },
-        head: [['Horario', 'Actividad', 'Responsable', 'Fecha']],
-        body: rows,
-        theme: 'grid',
-        headStyles: {
-          fillColor: [241, 245, 249], // #f1f5f9
-          textColor: [51, 65, 85], // #334155
-          fontStyle: 'bold',
-          fontSize: 8,
-          lineWidth: 0.2,
-          lineColor: [203, 213, 225]
-        },
-        bodyStyles: {
-          textColor: [15, 23, 42],
-          fontSize: 7.5,
-          lineWidth: 0.2,
-          lineColor: [203, 213, 225]
-        },
-        columnStyles: {
-          0: { cellWidth: 26, font: 'courier' },
-          1: { cellWidth: 'auto' },
-          2: { cellWidth: 42 },
-          3: { cellWidth: 24, font: 'courier' }
-        },
-        didParseCell: (hookData) => {
-          if (hookData.section === 'body' && bookings.length > 0) {
-            const booking = bookings[hookData.row.index];
-            if (booking && booking.importante === 'Sí') {
-              hookData.cell.styles.fillColor = [255, 251, 235]; // #fffbeb
-            }
-          }
-        }
-      });
-
-      // @ts-expect-error - jspdf-autotable lastAutoTable position
-      currentY = (doc.lastAutoTable?.finalY || currentY) + 5;
+    };
+    // Measure wrapped text first, then distribute the spare height across rows.
+    // Dense days flow onto additional pages of the same daily PDF without shrinking illegibly.
+    let measurement = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [215.9, 330.2] });
+    autoTable(measurement, tableOptions);
+    // Choose the largest readable text that fits the actual content on one sheet.
+    for (const candidateSize of [11, 10, 9]) {
+      if (measurement.getNumberOfPages() === 1) break;
+      if (candidateSize >= fontSize) continue;
+      tableOptions.styles = { ...tableOptions.styles, fontSize: candidateSize };
+      measurement = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [215.9, 330.2] });
+      autoTable(measurement, tableOptions);
     }
+    const measuredTable = (measurement as jsPDF & { lastAutoTable: Table }).lastAutoTable;
+    const spareHeight = measurement.getNumberOfPages() === 1
+      ? Math.max(0, pageHeight - 14 - (measuredTable.finalY ?? currentY) - 0.5) / rows.length
+      : 0;
+    autoTable(doc, {
+      ...tableOptions,
+      didParseCell: data => {
+        if (data.section !== 'body') return;
+        data.cell.styles.minCellHeight = measuredTable.body[data.row.index].height + spareHeight;
+        if (entries[data.row.index].booking?.importante === 'Sí') {
+          data.cell.styles.fillColor = [255, 251, 235];
+        }
+      }
+    });
   }
 
   // Footers on every page
@@ -433,7 +428,7 @@ export async function generateDailySchedulePdf(options: DailySchedulePdfOptions)
     doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184); // #94a3b8
     doc.text(
-      `Centro Comunitario Diaguitas - Planilla Oficial de Actividades (${formatDateDDMMYYYY(targetDate)})   |   Papel: 8.5" × 13" (Oficio)   |   Página ${i} de ${totalPages}`,
+      `Centro Comunitario Diaguitas - Planilla Oficial de Actividades (${formatDateDDMMYYYY(targetDate)})   |   Papel: 8.5" × 13" (Oficio horizontal)   |   Página ${i} de ${totalPages}`,
       pageWidth / 2,
       pageHeight - 8,
       { align: 'center' }
@@ -466,12 +461,16 @@ export async function generateDailyPdfsForDates(
   options?: Omit<DailySchedulePdfOptions, 'dateStr' | 'reservations'>
 ): Promise<GeneratedDailyPdfItem[]> {
   const items: GeneratedDailyPdfItem[] = [];
-  for (const dateStr of dates) {
-    const dailyBookings = reservations.filter((r) => r.fecha === dateStr);
+  for (const dateStr of [...new Set(dates)].sort()) {
+    const dailyBookings = reservations.filter(r => r.fecha === dateStr && isDispatchableReservation(r) && (
+      !options?.selectedActivityTypes || options.selectedActivityTypes.includes('ALL') ||
+      options.selectedActivityTypes.some(type => type.trim().toUpperCase() === (r.tipoActividad || '').trim().toUpperCase())
+    ));
     const doc = await generateDailySchedulePdf({
       dateStr,
-      reservations,
-      ...options
+      ...options,
+      reservations: dailyBookings,
+      include3DaysImportant: false
     });
     const filename = getDailySchedulePdfFilename(dateStr);
     const base64 = docToBase64(doc);

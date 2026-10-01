@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   Mail,
@@ -57,15 +57,12 @@ import {
   GmailDispatchConfig,
   calculateScheduledDates,
   WEEKDAY_LABELS,
-  getUpcomingSaturdayDate,
-  getUpcomingSundayDate,
-  getUpcomingWeekendDate,
   AlcanceActividadesTipo,
   calculateActivityDatesForDispatchDate,
-  calculateAllScheduledActivityDates,
   EmailDispatchFilterMode,
   isLoanReservation
 } from '../services/gmailDispatchService';
+import { filterDatesToDispatchWeek, getSantiagoDateStr, selectDispatchReservations } from '../utils/activityDispatchSelection';
 import { recordAuditEntry } from '../services/auditLogService';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import { formatActivitiesInDays } from '../utils/pluralUtils';
@@ -109,23 +106,23 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
   // Form State
   const [dateMode, setDateMode] = useState<DateSelectionMode>('single');
   const [singleDate, setSingleDate] = useState<string>(
-    initialDate || format(new Date(), 'yyyy-MM-dd')
+    initialDate || getSantiagoDateStr()
   );
   const [rangeStart, setRangeStart] = useState<string>(
-    initialDate || format(new Date(), 'yyyy-MM-dd')
+    initialDate || getSantiagoDateStr()
   );
   const [rangeEnd, setRangeEnd] = useState<string>(
     initialDate ? format(addDays(parseISO(initialDate), 4), 'yyyy-MM-dd') : format(addDays(new Date(), 4), 'yyyy-MM-dd')
   );
   const [multipleDates, setMultipleDates] = useState<string[]>([
-    initialDate || format(new Date(), 'yyyy-MM-dd')
+    initialDate || getSantiagoDateStr()
   ]);
   const [datePickerInput, setDatePickerInput] = useState<string>('');
 
   // Schedule / Recurring state ("Día de la semana y Duración")
   const [scheduleDays, setScheduleDays] = useState<number[]>([1]); // default Lunes
   const [scheduleStartDate, setScheduleStartDate] = useState<string>(
-    initialDate || format(new Date(), 'yyyy-MM-dd')
+    initialDate || getSantiagoDateStr()
   );
   const [scheduleEndDate, setScheduleEndDate] = useState<string>(
     initialDate
@@ -207,7 +204,7 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
         if (cfg.schedule.fechaInicio) setScheduleStartDate(cfg.schedule.fechaInicio);
         if (cfg.schedule.fechaFin) setScheduleEndDate(cfg.schedule.fechaFin);
         if (cfg.schedule.duracionMeses) setScheduleDurationMonths(cfg.schedule.duracionMeses);
-        if (cfg.schedule.alcanceActividades) setScheduleScope(cfg.schedule.alcanceActividades);
+        if (cfg.schedule.alcanceActividades) setScheduleScope(cfg.schedule.alcanceActividades === 'proxima_semana' ? 'semana_en_curso' : cfg.schedule.alcanceActividades);
         if (cfg.schedule.diasActividadesEspecificos && cfg.schedule.diasActividadesEspecificos.length > 0) {
           setScheduleSpecificActivityDays(cfg.schedule.diasActividadesEspecificos);
         }
@@ -216,16 +213,18 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
   }, [isOpen, initialFilterMode]);
 
   // Compute list of selected activity dates based on mode
-  const effectiveDates = useMemo<string[]>(() => {
+  const dispatchReferenceDate = getSantiagoDateStr();
+  const requestedDates = useMemo<string[]>(() => {
     if (dateMode === 'single') {
       return singleDate ? [singleDate] : [];
     }
     if (dateMode === 'range') {
       if (!rangeStart || !rangeEnd) return [];
       try {
-        const start = parseISO(rangeStart);
-        const end = parseISO(rangeEnd);
-        if (start > end) return [rangeStart];
+        const weekDates = calculateActivityDatesForDispatchDate(dispatchReferenceDate, 'semana_en_curso');
+        const start = parseISO(rangeStart > weekDates[0] ? rangeStart : weekDates[0]);
+        const end = parseISO(rangeEnd < weekDates[6] ? rangeEnd : weekDates[6]);
+        if (start > end) return [];
         const days = eachDayOfInterval({ start, end });
         return days.map(d => format(d, 'yyyy-MM-dd'));
       } catch {
@@ -236,16 +235,15 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
       return [...new Set(multipleDates)].sort();
     }
     if (dateMode === 'weekday_duration') {
-      return calculateAllScheduledActivityDates(
-        scheduleDays,
-        scheduleStartDate,
-        scheduleEndDate,
+      return calculateActivityDatesForDispatchDate(
+        dispatchReferenceDate,
         scheduleScope,
         scheduleSpecificActivityDays
-      );
+      ).filter(date => date >= scheduleStartDate && date <= scheduleEndDate);
     }
     return [];
   }, [
+    dispatchReferenceDate,
     dateMode,
     singleDate,
     rangeStart,
@@ -257,6 +255,8 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
     scheduleScope,
     scheduleSpecificActivityDays
   ]);
+
+  const effectiveDates = useMemo(() => filterDatesToDispatchWeek(requestedDates, dispatchReferenceDate), [requestedDates, dispatchReferenceDate]);
 
   // Scheduled dates when email dispatch will trigger
   const scheduledDispatchDates = useMemo<string[]>(() => {
@@ -277,42 +277,12 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
 
   // Filter reservations by selected dates, filter mode (loans or activities), and specific activity types
   const matchingActivities = useMemo<ActivityEmailItem[]>(() => {
-    const datesSet = new Set(effectiveDates);
-
-    return reservations
-      .filter(r => {
-        if (!datesSet.has(r.fecha)) return false;
-        if (r.estado === 'cancelada') return false;
-
-        const isLoan = isLoanReservation(r);
-
-        // Apply dispatchFilterMode:
-        if (dispatchFilterMode === 'solo_prestamos') {
-          return isLoan;
-        }
-
-        if (dispatchFilterMode === 'prestamos_y_seleccionadas') {
-          if (isLoan) return true;
-          if (!allActivityTypesSelected) {
-            return selectedActivityTypes.includes(r.tipoActividad);
-          }
-          return false;
-        }
-
-        if (dispatchFilterMode === 'actividades_seleccionadas') {
-          if (!allActivityTypesSelected) {
-            return selectedActivityTypes.includes(r.tipoActividad);
-          }
-          return true;
-        }
-
-        // 'todas'
-        if (!allActivityTypesSelected) {
-          if (!selectedActivityTypes.includes(r.tipoActividad)) return false;
-        }
-
-        return true;
-      })
+    return selectDispatchReservations(reservations, {
+      dates: effectiveDates,
+      referenceDate: dispatchReferenceDate,
+      filterMode: dispatchFilterMode,
+      selectedActivityTypes: allActivityTypesSelected ? ['ALL'] : selectedActivityTypes
+    })
       .map(r => ({
         id: r.id,
         fecha: r.fecha,
@@ -332,7 +302,7 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
         if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
         return a.horaInicio.localeCompare(b.horaInicio);
       });
-  }, [reservations, effectiveDates, dispatchFilterMode, allActivityTypesSelected, selectedActivityTypes]);
+  }, [reservations, effectiveDates, dispatchReferenceDate, dispatchFilterMode, allActivityTypesSelected, selectedActivityTypes]);
 
   // Activity Selection State (user can select/deselect individual activities to dispatch)
   const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>([]);
@@ -342,20 +312,38 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
     return matchingActivities.filter(a => isLoanReservation(a)).length;
   }, [matchingActivities]);
 
-  // Automatically select candidate activities (or target reservation) when candidate set changes
+  // Preserve explicit exclusions when live reservations refresh.
+  const selectionInitialized = useRef(false);
   useEffect(() => {
-    if (initialReservationId && matchingActivities.some(a => a.id === initialReservationId)) {
-      setSelectedActivityIds([initialReservationId]);
-    } else {
-      setSelectedActivityIds(matchingActivities.map(a => a.id));
+    if (!isOpen) {
+      selectionInitialized.current = false;
+      return;
     }
-  }, [matchingActivities, initialReservationId]);
+    if (!selectionInitialized.current && matchingActivities.length > 0) {
+      selectionInitialized.current = true;
+      setSelectedActivityIds(initialReservationId
+        ? matchingActivities.filter(a => a.id === initialReservationId).map(a => a.id)
+        : matchingActivities.map(a => a.id));
+    } else {
+      const candidates = new Set(matchingActivities.map(a => a.id));
+      setSelectedActivityIds(previous => previous.filter(id => candidates.has(id)));
+    }
+  }, [matchingActivities, initialReservationId, isOpen]);
 
   // Subset of activities explicitly selected by user to be sent
   const activitiesToDispatch = useMemo<ActivityEmailItem[]>(() => {
     const selectedSet = new Set(selectedActivityIds);
     return matchingActivities.filter(a => selectedSet.has(a.id));
   }, [matchingActivities, selectedActivityIds]);
+
+  const dispatchDates = useMemo(() => [...new Set(activitiesToDispatch.map(a => a.fecha))].sort(), [activitiesToDispatch]);
+  const dispatchReservations = useMemo(() => selectDispatchReservations(reservations, {
+    dates: dispatchDates,
+    referenceDate: dispatchReferenceDate,
+    filterMode: dispatchFilterMode,
+    selectedActivityTypes: allActivityTypesSelected ? ['ALL'] : selectedActivityTypes,
+    selectedActivityIds
+  }), [reservations, dispatchDates, dispatchReferenceDate, dispatchFilterMode, allActivityTypesSelected, selectedActivityTypes, selectedActivityIds]);
 
   // Group matching activities by date for structured display
   const activitiesByDate = useMemo(() => {
@@ -451,16 +439,15 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
   // Generate Email Previews with ONLY the selected activities
   const emailContent = useMemo(() => {
     return generateActivitiesEmailContent({
-      dates: effectiveDates,
+      dates: dispatchDates,
       activities: activitiesToDispatch,
       customNote,
       senderEmail: DEFAULT_GMAIL_SENDER,
       includeObservations,
       includeResponsibleContact
     });
-  }, [effectiveDates, activitiesToDispatch, customNote, includeObservations, includeResponsibleContact]);
+  }, [dispatchDates, activitiesToDispatch, customNote, includeObservations, includeResponsibleContact]);
 
-  if (!isOpen) return null;
 
   // Handle Google Connection
   const handleConnectGoogle = async () => {
@@ -529,8 +516,8 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
   };
 
   const handleAddWeekendDateToMultiple = () => {
-    const { saturday, sunday } = getUpcomingWeekendDate();
-    setMultipleDates(prev => Array.from(new Set([...prev, saturday, sunday])).sort());
+    const weekend = calculateActivityDatesForDispatchDate(getSantiagoDateStr(), 'fin_de_semana');
+    setMultipleDates(prev => Array.from(new Set([...prev, ...weekend])).sort());
   };
 
   const handleRemoveDateFromMultiple = (dateToRemove: string) => {
@@ -539,8 +526,8 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
   };
 
   // Quick Date presets
-  const handleSetQuickPreset = (preset: 'today' | 'tomorrow' | 'next_saturday' | 'next_sunday' | 'weekend' | 'this_week' | 'next_week') => {
-    const today = new Date();
+  const handleSetQuickPreset = (preset: 'today' | 'tomorrow' | 'next_saturday' | 'next_sunday' | 'weekend' | 'this_week') => {
+    const today = parseISO(getSantiagoDateStr());
     if (preset === 'today') {
       setDateMode('single');
       setSingleDate(format(today, 'yyyy-MM-dd'));
@@ -549,26 +536,20 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
       setSingleDate(format(addDays(today, 1), 'yyyy-MM-dd'));
     } else if (preset === 'next_saturday') {
       setDateMode('single');
-      setSingleDate(getUpcomingSaturdayDate(false));
+      setSingleDate(calculateActivityDatesForDispatchDate(getSantiagoDateStr(), 'siguiente_sabado')[0]);
     } else if (preset === 'next_sunday') {
       setDateMode('single');
-      setSingleDate(getUpcomingSundayDate(false));
+      setSingleDate(calculateActivityDatesForDispatchDate(getSantiagoDateStr(), 'siguiente_domingo')[0]);
     } else if (preset === 'weekend') {
       setDateMode('multiple');
-      const { saturday, sunday } = getUpcomingWeekendDate();
-      setMultipleDates([saturday, sunday]);
+      setMultipleDates(calculateActivityDatesForDispatchDate(getSantiagoDateStr(), 'fin_de_semana'));
     } else if (preset === 'this_week') {
       setDateMode('range');
       const start = startOfWeek(today, { weekStartsOn: 1 });
       const end = endOfWeek(today, { weekStartsOn: 1 });
       setRangeStart(format(start, 'yyyy-MM-dd'));
       setRangeEnd(format(end, 'yyyy-MM-dd'));
-    } else if (preset === 'next_week') {
-      setDateMode('range');
-      const nextWeekStart = addDays(startOfWeek(today, { weekStartsOn: 1 }), 7);
-      const nextWeekEnd = addDays(endOfWeek(today, { weekStartsOn: 1 }), 7);
-      setRangeStart(format(nextWeekStart, 'yyyy-MM-dd'));
-      setRangeEnd(format(nextWeekEnd, 'yyyy-MM-dd'));
+
     }
   };
 
@@ -624,11 +605,7 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
 
     if (selectedActivityTypes.includes(type)) {
       const next = selectedActivityTypes.filter(t => t !== type);
-      if (next.length === 0) {
-        setAllActivityTypesSelected(true);
-      } else {
-        setSelectedActivityTypes(next);
-      }
+      setSelectedActivityTypes(next);
     } else {
       setSelectedActivityTypes(prev => [...prev, type]);
     }
@@ -640,6 +617,7 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
     const configToSave: GmailDispatchConfig = {
       senderEmail: DEFAULT_GMAIL_SENDER,
       defaultRecipients: recipients,
+      dispatchFilterMode,
       selectedActivityTypes: allActivityTypesSelected ? ['ALL'] : selectedActivityTypes,
       subjectTemplate: subject,
       customHeaderNote: customNote,
@@ -668,31 +646,28 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
   };
 
   // Metadata is cheap; document generation happens only in explicit actions.
-  const dailyPdfAttachments = useMemo(() => effectiveDates.map(date => {
-    const selectedSet = new Set(selectedActivityIds);
-    const activitiesCount = reservations.filter(r => r.fecha === date && selectedSet.has(r.id)).length;
+  const dailyPdfAttachments = useMemo(() => dispatchDates.map(date => {
+    const activitiesCount = dispatchReservations.filter(r => r.fecha === date).length;
     return {
       date,
       filename: getDailySchedulePdfFilename(date),
       activitiesCount,
     };
-  }), [effectiveDates, reservations, selectedActivityIds]);
+  }), [dispatchDates, dispatchReservations]);
 
   const [downloadingPdf, setDownloadingPdf] = useState<string | null>(null);
   const pdfOptions = {
     spaces: availableSpaces,
-    selectedActivityTypes: allActivityTypesSelected ? ['ALL'] : selectedActivityTypes,
     onlyOccupiedSpaces: true,
-    include3DaysImportant: true,
+    include3DaysImportant: false,
     customNote,
   };
   const handleDownloadDailyPdf = async (date: string) => {
     if (downloadingPdf) return;
     setDownloadingPdf(date);
     try {
-      const selectedSet = new Set(selectedActivityIds);
-      const filteredReservations = reservations.filter(r => selectedSet.has(r.id));
-      const [item] = await generateDailyPdfsForDates([date], filteredReservations, pdfOptions);
+      if (!dispatchDates.includes(date)) throw new Error('El día no tiene actividades seleccionadas.');
+      const [item] = await generateDailyPdfsForDates([date], dispatchReservations, pdfOptions);
       item.doc.save(item.filename);
     } catch (error) {
       setSendErrorMessage('No se pudo generar el PDF. Intente nuevamente.');
@@ -710,9 +685,11 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
     setSendSuccessMessage(null);
 
     try {
-      const selectedSet = new Set(selectedActivityIds);
-      const filteredReservations = reservations.filter(r => selectedSet.has(r.id));
-      const documents = await generateDailyPdfsForDates(effectiveDates, filteredReservations, pdfOptions);
+      const currentDates = filterDatesToDispatchWeek(dispatchDates);
+      if (currentDates.length !== dispatchDates.length || dispatchReservations.length === 0) {
+        throw new Error('Selecciona actividades de la semana en curso antes de enviar.');
+      }
+      const documents = await generateDailyPdfsForDates(currentDates, dispatchReservations, pdfOptions);
       const attachmentsToSend = documents.map(item => ({
         filename: item.filename,
         contentType: 'application/pdf',
@@ -743,7 +720,7 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
         reservaId: 'GMAIL_DISPATCH',
         reservaTitle: `Despacho Gmail: ${recipients.join(', ')}`,
         user: currentUser || 'Cristian Shute',
-        description: `Envío de reporte de actividades vía Gmail API (${DEFAULT_GMAIL_SENDER}) a: ${recipients.join(', ')}. Fechas: ${effectiveDates.join(', ')}. Actividades: ${matchingActivities.length}. Planillas PDF adjuntas para impresión: ${attachmentsToSend.length}. ID: ${result.messageId}`
+        description: `Envío de reporte de actividades vía Gmail API (${DEFAULT_GMAIL_SENDER}) a: ${recipients.join(', ')}. Fechas: ${dispatchDates.join(', ')}. Actividades: ${dispatchReservations.length}. Planillas PDF adjuntas para impresión: ${attachmentsToSend.length}. ID: ${result.messageId}`
       });
     } catch (err: any) {
       setSendErrorMessage(err?.message || 'Error inesperado durante el envío.');
@@ -751,6 +728,8 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
       setIsSending(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div
@@ -909,14 +888,14 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                       onClick={() => handleSetQuickPreset('next_saturday')}
                       className="px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold transition cursor-pointer"
                     >
-                      Próx. Sábado
+                      Sábado de esta semana
                     </button>
                     <button
                       type="button"
                       onClick={() => handleSetQuickPreset('next_sunday')}
                       className="px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold transition cursor-pointer"
                     >
-                      Próx. Domingo
+                      Domingo de esta semana
                     </button>
                     <button
                       type="button"
@@ -932,16 +911,10 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                     >
                       Esta Semana
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSetQuickPreset('next_week')}
-                      className="px-2 py-0.5 rounded bg-white hover:bg-blue-50 border border-slate-200 text-slate-600 hover:text-blue-700 font-medium transition cursor-pointer"
-                    >
-                      Próxima Semana
-                    </button>
                   </div>
                 </div>
 
+                <p className="text-xs text-blue-800">El envío incluye únicamente actividades seleccionadas de la semana en curso (lunes a domingo, hora de Chile). La duración configura futuros despachos; cada envío genera un PDF independiente por día seleccionado.</p>
                 {/* Top-Level Mode Tabs: Envío Puntual vs Programación Periódica */}
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 p-1 bg-slate-200/80 rounded-xl gap-1">
@@ -1039,14 +1012,14 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                       />
                       <button
                         type="button"
-                        onClick={() => setSingleDate(getUpcomingSaturdayDate(false))}
+                        onClick={() => setSingleDate(calculateActivityDatesForDispatchDate(getSantiagoDateStr(), 'siguiente_sabado')[0])}
                         className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-xs font-medium transition cursor-pointer"
                       >
                         Próx. Sábado
                       </button>
                       <button
                         type="button"
-                        onClick={() => setSingleDate(getUpcomingSundayDate(false))}
+                        onClick={() => setSingleDate(calculateActivityDatesForDispatchDate(getSantiagoDateStr(), 'siguiente_domingo')[0])}
                         className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-xs font-medium transition cursor-pointer"
                       >
                         Próx. Domingo
@@ -1055,7 +1028,7 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                         type="button"
                         onClick={() => {
                           setDateMode('multiple');
-                          setMultipleDates([getUpcomingSaturdayDate(false), getUpcomingSundayDate(false)]);
+                          setMultipleDates([calculateActivityDatesForDispatchDate(getSantiagoDateStr(), 'siguiente_sabado')[0], calculateActivityDatesForDispatchDate(getSantiagoDateStr(), 'siguiente_domingo')[0]]);
                         }}
                         className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition cursor-pointer"
                       >
@@ -1114,14 +1087,14 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                         <span className="text-[11px] text-slate-400 mr-0.5">Agregar rápido:</span>
                         <button
                           type="button"
-                          onClick={() => handleAddQuickDateToMultiple(getUpcomingSaturdayDate(false))}
+                          onClick={() => handleAddQuickDateToMultiple(calculateActivityDatesForDispatchDate(getSantiagoDateStr(), 'siguiente_sabado')[0])}
                           className="px-2 py-0.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold border border-blue-200 transition cursor-pointer"
                         >
                           + Próx. Sábado
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleAddQuickDateToMultiple(getUpcomingSundayDate(false))}
+                          onClick={() => handleAddQuickDateToMultiple(calculateActivityDatesForDispatchDate(getSantiagoDateStr(), 'siguiente_domingo')[0])}
                           className="px-2 py-0.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold border border-blue-200 transition cursor-pointer"
                         >
                           + Próx. Domingo
@@ -1342,19 +1315,19 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                             id: 'fin_de_semana' as AlcanceActividadesTipo,
                             title: 'Fin de Semana (Sáb + Dom)',
                             badge: 'Recomendado',
-                            desc: 'Actividades del sábado y domingo siguientes. Ideal para despachos en viernes.'
+                            desc: 'Actividades del sábado y domingo de la semana en curso. Ideal para despachos en viernes.'
                           },
                           {
                             id: 'siguiente_sabado' as AlcanceActividadesTipo,
-                            title: 'Siguiente Sábado',
+                            title: 'Sábado de esta semana',
                             badge: 'Solo sábado',
-                            desc: 'Envía las actividades programadas para el próximo sábado.'
+                            desc: 'Envía las actividades programadas para el sábado de la semana en curso.'
                           },
                           {
                             id: 'siguiente_domingo' as AlcanceActividadesTipo,
-                            title: 'Siguiente Domingo',
+                            title: 'Domingo de esta semana',
                             badge: 'Solo domingo',
-                            desc: 'Envía las actividades programadas para el próximo domingo.'
+                            desc: 'Envía las actividades programadas para el domingo de la semana en curso.'
                           },
                           {
                             id: 'dia_del_envio' as AlcanceActividadesTipo,
@@ -1367,12 +1340,6 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                             title: 'Semana en Curso',
                             badge: 'Lun a Dom',
                             desc: 'Consolidado semanal completo de la semana en ejecución.'
-                          },
-                          {
-                            id: 'proxima_semana' as AlcanceActividadesTipo,
-                            title: 'Próxima Semana',
-                            badge: 'Lun a Dom (+1)',
-                            desc: 'Anticipación de actividades para la siguiente semana completa.'
                           },
                           {
                             id: 'dias_especificos' as AlcanceActividadesTipo,
@@ -2034,12 +2001,12 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                     </span>
                   </div>
                   <span className="text-[11px] font-semibold text-blue-800 bg-blue-100/70 px-2 py-0.5 rounded-md border border-blue-200 self-start sm:self-auto">
-                    Hoja: 8.5" × 13" (Oficio) • 1 por día
+                    Hoja: 8.5" × 13" horizontal • 1 por día
                   </span>
                 </div>
 
                 <p className="text-[11px] text-slate-600">
-                  El correo adjuntará automáticamente una planilla PDF vectorizada en <strong>hoja de 8.5" × 13" (Oficio)</strong> por cada día que se envíe con el fin de imprimir directamente en portería/administración:
+                  El correo adjuntará automáticamente una planilla PDF vectorizada en <strong>hoja de 8.5" × 13" (Oficio), horizontal</strong> por cada día que se envíe con el fin de imprimir directamente en portería/administración:
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -2198,7 +2165,7 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Días abarcados:</span>
-                <strong className="text-slate-800">{effectiveDates.length} día(s)</strong>
+                <strong className="text-slate-800">{dispatchDates.length} día(s)</strong>
               </div>
             </div>
 

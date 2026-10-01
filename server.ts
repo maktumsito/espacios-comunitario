@@ -1,3 +1,4 @@
+import { selectDispatchReservations, isDispatchLoan as isLoan, isDispatchableReservation } from './src/utils/activityDispatchSelection';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -486,7 +487,7 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
     // 5. Determine activity dates to include based on configured scope
     const alcance = schedule.alcanceActividades || 'fin_de_semana';
     const specificDays = schedule.diasActividadesEspecificos || [6, 0];
-    const activityDates = calculateActivityDatesForDispatchDate(santiago.dateStr, alcance, specificDays);
+    let activityDates = calculateActivityDatesForDispatchDate(santiago.dateStr, alcance, specificDays);
 
     if (activityDates.length === 0) {
       return { success: false, message: 'No hay fechas de actividades calculadas para despachar en este ciclo.' };
@@ -494,34 +495,17 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
 
     // 6. Fetch reservations from Firestore and filter according to configured dispatchFilterMode
     const allReservations = await fetchAllReservationsServer();
-    const activeReservations = allReservations.filter(
-      r => r.estado !== 'Cancelada' && r.estado !== 'Rechazada'
-    );
-
     const filterMode = config?.dispatchFilterMode || 'solo_prestamos';
-    const isLoan = (r: any) =>
-      Boolean(r?.tipoPrestamo && String(r.tipoPrestamo).trim() !== '') ||
-      Boolean(r?.tipoActividad && /pr[eé]stamo/i.test(String(r.tipoActividad)));
-
-    const emailReservations = activeReservations.filter(r => {
-      if (filterMode === 'solo_prestamos') {
-        return isLoan(r);
-      }
-      if (filterMode === 'prestamos_y_seleccionadas') {
-        if (isLoan(r)) return true;
-        if (Array.isArray(config?.selectedActivityTypes) && !config.selectedActivityTypes.includes('ALL')) {
-          return config.selectedActivityTypes.includes(r.tipoActividad);
-        }
-        return false;
-      }
-      if (filterMode === 'actividades_seleccionadas') {
-        if (Array.isArray(config?.selectedActivityTypes) && !config.selectedActivityTypes.includes('ALL')) {
-          return config.selectedActivityTypes.includes(r.tipoActividad);
-        }
-        return true;
-      }
-      return true; // 'todas'
+    const emailReservations = selectDispatchReservations(allReservations, {
+      dates: activityDates,
+      referenceDate: santiago.dateStr,
+      filterMode,
+      selectedActivityTypes: config?.selectedActivityTypes
     });
+    activityDates = activityDates.filter(date => emailReservations.some(r => r.fecha === date));
+    if (activityDates.length === 0) {
+      return { success: false, message: 'No hay actividades seleccionadas de la semana en curso para enviar.' };
+    }
 
     // 7. Generate ONE printable PDF sheet for EACH day to be dispatched
     const attachments: EmailAttachmentServer[] = [];
@@ -530,7 +514,7 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
         dateStr,
         reservations: emailReservations,
         onlyOccupiedSpaces: true,
-        include3DaysImportant: true,
+        include3DaysImportant: false,
         generatedBy: filterMode === 'solo_prestamos'
           ? 'Despacho Oficial de Préstamos Diaguitas'
           : 'Despacho Automático Diaguitas'
@@ -583,7 +567,7 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
               Con el fin de facilitar la impresión diaria en portería y administración, se ha generado y adjuntado <strong>una planilla PDF separada por cada día</strong>:
             </p>
             <ul style="margin: 0; padding-left: 20px; font-size: 12px; color: #166534;">
-              ${attachments.map(att => `<li style="margin-bottom: 4px;"><strong>${att.filename}</strong> (formato vectorizado en hoja de 8.5" × 13" listo para imprimir)</li>`).join('')}
+              ${attachments.map(att => `<li style="margin-bottom: 4px;"><strong>${att.filename}</strong> (formato vectorizado en hoja de 8.5" × 13" horizontal listo para imprimir)</li>`).join('')}
             </ul>
           </div>
 
@@ -956,30 +940,22 @@ async function startServer() {
 
       const alcance = schedule?.alcanceActividades || 'fin_de_semana';
       const specificDays = schedule?.diasActividadesEspecificos || [6, 0];
-      const activityDates = calculateActivityDatesForDispatchDate(santiago.dateStr, alcance, specificDays);
+      let activityDates = calculateActivityDatesForDispatchDate(santiago.dateStr, alcance, specificDays);
 
       const allReservations = await fetchAllReservationsServer();
       const filterMode = config?.dispatchFilterMode || 'solo_prestamos';
-      const isLoan = (r: any) =>
-        Boolean(r?.tipoPrestamo && String(r.tipoPrestamo).trim() !== '') ||
-        Boolean(r?.tipoActividad && /pr[eé]stamo/i.test(String(r.tipoActividad)));
-
-      const emailReservations = allReservations.filter(r => {
-        if (r.estado === 'Cancelada' || r.estado === 'Rechazada') return false;
-        if (filterMode === 'solo_prestamos') return isLoan(r);
-        if (filterMode === 'prestamos_y_seleccionadas') {
-          return isLoan(r) || (Array.isArray(config?.selectedActivityTypes) && config.selectedActivityTypes.includes(r.tipoActividad));
-        }
-        if (filterMode === 'actividades_seleccionadas') {
-          return Array.isArray(config?.selectedActivityTypes) && config.selectedActivityTypes.includes(r.tipoActividad);
-        }
-        return true;
+      const emailReservations = selectDispatchReservations(allReservations, {
+        dates: activityDates,
+        referenceDate: santiago.dateStr,
+        filterMode,
+        selectedActivityTypes: config?.selectedActivityTypes
       });
+      activityDates = activityDates.filter(date => emailReservations.some(r => r.fecha === date));
 
       const dailySummaries = activityDates.map(dateStr => {
         const count = emailReservations.filter(r => r.fecha === dateStr).length;
-        const totalRaw = allReservations.filter(r => r.fecha === dateStr && r.estado !== 'Cancelada' && r.estado !== 'Rechazada').length;
-        const loansCount = allReservations.filter(r => r.fecha === dateStr && r.estado !== 'Cancelada' && r.estado !== 'Rechazada' && isLoan(r)).length;
+        const totalRaw = allReservations.filter(r => r.fecha === dateStr && isDispatchableReservation(r)).length;
+        const loansCount = allReservations.filter(r => r.fecha === dateStr && isDispatchableReservation(r) && isLoan(r)).length;
         const filename = getDailySchedulePdfFilename(dateStr);
         return { dateStr, formattedDate: formatDateDDMMYYYY(dateStr), filename, count, totalRaw, loansCount, filterMode };
       });

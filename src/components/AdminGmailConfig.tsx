@@ -136,7 +136,9 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
     let mounted = true;
     loadGmailDispatchConfig().then(saved => {
       if (mounted) {
-        setConfig(saved);
+        setConfig(saved.schedule?.alcanceActividades === 'proxima_semana'
+          ? { ...saved, schedule: { ...saved.schedule, alcanceActividades: 'semana_en_curso' } }
+          : saved);
         setIsLoadingConfig(false);
       }
     });
@@ -201,7 +203,7 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
         const next = current.filter(t => t !== typeName);
         return {
           ...prev,
-          selectedActivityTypes: next.length === 0 ? ['ALL'] : next
+          selectedActivityTypes: next
         };
       }
       return {
@@ -701,15 +703,15 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
               },
               {
                 id: 'siguiente_sabado' as AlcanceActividadesTipo,
-                title: 'Siguiente Sábado',
+                title: 'Sábado de esta semana',
                 tag: 'Solo sábado',
-                desc: 'Envía únicamente las actividades correspondientes al próximo sábado.'
+                desc: 'Envía únicamente las actividades correspondientes al sábado de la semana en curso.'
               },
               {
                 id: 'siguiente_domingo' as AlcanceActividadesTipo,
-                title: 'Siguiente Domingo',
+                title: 'Domingo de esta semana',
                 tag: 'Solo domingo',
-                desc: 'Envía únicamente las actividades correspondientes al próximo domingo.'
+                desc: 'Envía únicamente las actividades correspondientes al domingo de la semana en curso.'
               },
               {
                 id: 'dia_del_envio' as AlcanceActividadesTipo,
@@ -722,12 +724,6 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
                 title: 'Semana en Curso (Lun a Dom)',
                 tag: 'Semana actual',
                 desc: 'Consolidado completo de lunes a domingo de la semana en ejecución.'
-              },
-              {
-                id: 'proxima_semana' as AlcanceActividadesTipo,
-                title: 'Próxima Semana (Lun a Dom)',
-                tag: 'Semana entrante',
-                desc: 'Anticipación de actividades para los 7 días de la siguiente semana.'
               },
               {
                 id: 'dias_especificos' as AlcanceActividadesTipo,
@@ -868,9 +864,9 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
                 {currentSchedule.alcanceActividades === 'fin_de_semana'
                   ? 'Fin de Semana (Sábado y Domingo siguientes)'
                   : currentSchedule.alcanceActividades === 'siguiente_sabado'
-                  ? 'Siguiente Sábado'
+                  ? 'Sábado de esta semana'
                   : currentSchedule.alcanceActividades === 'siguiente_domingo'
-                  ? 'Siguiente Domingo'
+                  ? 'Domingo de esta semana'
                   : currentSchedule.alcanceActividades === 'dia_del_envio'
                   ? 'Mismo Día del Envío'
                   : currentSchedule.alcanceActividades === 'proxima_semana'
@@ -932,7 +928,7 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-blue-900 leading-relaxed">
-                El despacho automático generará y adjuntará <strong>una planilla PDF separada por cada día</strong> que se envíe, configurada y diagramada específicamente para imprimirse en <strong>hoja de 8.5 × 13 pulgadas (tamaño Oficio / Folio)</strong> en formato vectorizado de alta definición y contraste óptimo para imprimir directamente en portería y administración.
+                Cada despacho incluirá solo las actividades seleccionadas de la semana en curso (lunes a domingo, hora de Chile), y generará y adjuntará <strong>una planilla PDF separada por cada día</strong> que se envíe, configurada y diagramada específicamente para imprimirse en <strong>hoja de 8.5 × 13 pulgadas (tamaño Oficio / Folio), horizontal</strong> en formato vectorizado de alta definición y contraste óptimo para imprimir directamente en portería y administración.
               </p>
             </div>
           </div>

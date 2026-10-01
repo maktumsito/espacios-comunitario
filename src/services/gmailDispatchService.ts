@@ -1,3 +1,4 @@
+import { filterDatesToDispatchWeek, isDispatchLoan } from '../utils/activityDispatchSelection';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { getFirebaseAuth, getDb } from '../firebase/config';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -215,10 +216,10 @@ export const DEFAULT_SCHEDULED_CONFIG: ScheduledDispatchConfig = {
  * - 'siguiente_domingo': returns the following Sunday.
  * - 'dia_del_envio': returns the dispatch date itself.
  * - 'semana_en_curso': returns Monday through Sunday of that week.
- * - 'proxima_semana': returns Monday through Sunday of next week.
+ * - 'proxima_semana': legacy setting, mapped to the current week for dispatch.
  * - 'dias_especificos': returns the selected weekday dates in that cycle.
  */
-export function calculateActivityDatesForDispatchDate(
+function calculateUnboundedActivityDatesForDispatchDate(
   dispatchDateStr: string,
   alcance: AlcanceActividadesTipo = 'fin_de_semana',
   diasActividadesEspecificos: number[] = [6, 0]
@@ -234,7 +235,9 @@ export function calculateActivityDatesForDispatchDate(
 
     if (alcance === 'fin_de_semana') {
       let satDate: Date;
-      if (dayOfWeek === 6) {
+      if (dayOfWeek === 0) {
+        satDate = addDays(dispatchDate, -1);
+      } else if (dayOfWeek === 6) {
         satDate = dispatchDate;
       } else {
         satDate = nextSaturday(dispatchDate);
@@ -245,7 +248,9 @@ export function calculateActivityDatesForDispatchDate(
 
     if (alcance === 'siguiente_sabado') {
       let satDate: Date;
-      if (dayOfWeek === 6) {
+      if (dayOfWeek === 0) {
+        satDate = addDays(dispatchDate, -1);
+      } else if (dayOfWeek === 6) {
         satDate = dispatchDate;
       } else {
         satDate = nextSaturday(dispatchDate);
@@ -285,7 +290,7 @@ export function calculateActivityDatesForDispatchDate(
 
     if (alcance === 'dias_especificos') {
       if (!diasActividadesEspecificos || diasActividadesEspecificos.length === 0) {
-        return [dispatchDateStr];
+        return [];
       }
       const diffToMonday = (dayOfWeek + 6) % 7;
       const monday = addDays(dispatchDate, -diffToMonday);
@@ -313,6 +318,18 @@ export function calculateActivityDatesForDispatchDate(
     console.error('[calculateActivityDatesForDispatchDate] Error:', err);
   }
   return [dispatchDateStr];
+}
+
+/** Each dispatch is restricted to its own Monday-Sunday cycle. */
+export function calculateActivityDatesForDispatchDate(
+  dispatchDateStr: string,
+  alcance: AlcanceActividadesTipo = 'fin_de_semana',
+  diasActividadesEspecificos: number[] = [6, 0]
+): string[] {
+  return filterDatesToDispatchWeek(
+    calculateUnboundedActivityDatesForDispatchDate(dispatchDateStr, alcance === 'proxima_semana' ? 'semana_en_curso' : alcance, diasActividadesEspecificos),
+    dispatchDateStr
+  );
 }
 
 /**
@@ -380,10 +397,7 @@ export const WEEKDAY_LABELS: Record<number, { name: string; short: string }> = {
  * Determines whether a reservation corresponds to a space or equipment loan ("Préstamo")
  */
 export function isLoanReservation(reserva?: { tipoPrestamo?: string; tipoActividad?: string } | null): boolean {
-  if (!reserva) return false;
-  if (reserva.tipoPrestamo && reserva.tipoPrestamo.trim() !== '') return true;
-  if (reserva.tipoActividad && /pr[eé]stamo/i.test(reserva.tipoActividad)) return true;
-  return false;
+  return reserva ? isDispatchLoan(reserva) : false;
 }
 
 /**
