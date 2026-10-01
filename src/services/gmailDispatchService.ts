@@ -1,3 +1,4 @@
+import { gmailServerRequest, waitForGmailPopup, type GmailServerStatus } from './gmailConnectionClient';
 import { filterDatesToDispatchWeek, isDispatchLoan } from '../utils/activityDispatchSelection';
 import { GoogleAuthProvider, signInWithPopup, onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { getFirebaseAuth, getDb } from '../firebase/config';
@@ -56,9 +57,36 @@ export interface GoogleAuthUserInfo {
 // (NEVER persisted in localStorage or sessionStorage)
 let inMemoryAccessToken: string | null = null;
 let currentGoogleUser: GoogleAuthUserInfo | null = null;
+let serverConnection: GmailServerStatus | null = null;
+let restoringConnection: Promise<void> | null = null;
+let tokenExpiresAt = 0;
+let connectionGeneration = 0;
+
+export function isPersistentGmailConnection(): boolean {
+  return serverConnection?.persistent === true;
+}
+
+export function isGmailConnected(): boolean {
+  return Boolean(getGmailAccessToken()) || serverConnection?.connected === true;
+}
+
+export async function restoreGmailConnection(): Promise<void> {
+  if (restoringConnection) return restoringConnection;
+  const generation = connectionGeneration;
+  restoringConnection = (async () => {
+    try {
+      const recovered = await gmailServerRequest('gmail/status');
+      if (generation !== connectionGeneration) return;
+      serverConnection = recovered;
+      notifyAuthListeners();
+    } catch { /* Temporary network failure does not revoke an existing authorization. */ }
+  })();
+  try { await restoringConnection; }
+  finally { restoringConnection = null; }
+}
 
 // Auth state listeners
-export type AuthStateCallback = (user: GoogleAuthUserInfo | null, token: string | null) => void;
+export type AuthStateCallback = (user: GoogleAuthUserInfo | null, token: string | null, serverConnected?: boolean, persistent?: boolean) => void;
 const authListeners: Set<AuthStateCallback> = new Set();
 
 /**
@@ -67,14 +95,14 @@ const authListeners: Set<AuthStateCallback> = new Set();
 export function subscribeGmailAuthState(callback: AuthStateCallback): () => void {
   authListeners.add(callback);
   // Emit current state immediately
-  callback(currentGoogleUser, inMemoryAccessToken);
+  callback(getCurrentGoogleUser(), getGmailAccessToken(), serverConnection?.connected === true, isPersistentGmailConnection());
   return () => {
     authListeners.delete(callback);
   };
 }
 
 function notifyAuthListeners() {
-  authListeners.forEach(cb => cb(currentGoogleUser, inMemoryAccessToken));
+  authListeners.forEach(cb => cb(getCurrentGoogleUser(), getGmailAccessToken(), serverConnection?.connected === true, isPersistentGmailConnection()));
 }
 
 /**
@@ -82,7 +110,11 @@ function notifyAuthListeners() {
  */
 export function initGmailAuthListener(): () => void {
   const auth = getFirebaseAuth();
-  return onAuthStateChanged(auth, (user: User | null) => {
+  void restoreGmailConnection();
+  const refresh = () => { void restoreGmailConnection(); };
+  window.addEventListener('focus', refresh);
+  const interval = setInterval(refresh, 60_000);
+  const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
     if (user) {
       currentGoogleUser = {
         email: user.email,
@@ -96,6 +128,11 @@ export function initGmailAuthListener(): () => void {
     }
     notifyAuthListeners();
   });
+  return () => {
+    unsubscribe();
+    window.removeEventListener('focus', refresh);
+    clearInterval(interval);
+  };
 }
 
 /**
@@ -106,12 +143,31 @@ export async function connectGoogleGmailAccount(loginHint: string = DEFAULT_GMAI
   user: { email: string | null; displayName: string | null };
   accessToken: string;
 }> {
+  // Reserve the OAuth window during the click, before any asynchronous work.
+  const popup = serverConnection?.oauthConfigured !== false ? window.open('about:blank', 'diaguitas-gmail', 'width=520,height=680') : null;
+  await restoreGmailConnection();
+  if (serverConnection?.oauthConfigured) {
+    if (!popup) throw new Error('Permite la ventana de Google para conectar Gmail.');
+    try {
+      const { url } = await gmailServerRequest('gmail/connect', {});
+      const completion = waitForGmailPopup(popup);
+      popup.location.href = url;
+      await completion;
+      await restoreGmailConnection();
+      if (!serverConnection?.connected) throw new Error('No se pudo recuperar la conexión de Gmail.');
+      return { user: getCurrentGoogleUser()!, accessToken: '' };
+    } catch (error) {
+      if (!popup.closed) popup.close();
+      throw error;
+    }
+  }
+  if (popup && !popup.closed) popup.close();
   const auth = getFirebaseAuth();
   const provider = new GoogleAuthProvider();
   provider.addScope(GMAIL_SEND_SCOPE);
   provider.setCustomParameters({
     login_hint: loginHint,
-    prompt: 'consent'
+    prompt: 'select_account'
   });
 
   try {
@@ -121,7 +177,14 @@ export async function connectGoogleGmailAccount(loginHint: string = DEFAULT_GMAI
       throw new Error('No se pudo obtener el token de acceso de Google para enviar correos.');
     }
 
+    if (result.user.email !== DEFAULT_GMAIL_SENDER) {
+      throw new Error('Conecta la cuenta emisora oficial ' + DEFAULT_GMAIL_SENDER + '.');
+    }
+    // Persist the compatibility session in an encrypted HttpOnly cookie.
+    await gmailServerRequest('gmail/session', { accessToken: credential.accessToken });
     inMemoryAccessToken = credential.accessToken;
+    tokenExpiresAt = Date.now() + 55 * 60_000;
+    await restoreGmailConnection();
     currentGoogleUser = {
       email: result.user.email,
       displayName: result.user.displayName,
@@ -144,13 +207,16 @@ export async function connectGoogleGmailAccount(loginHint: string = DEFAULT_GMAI
  * Returns the in-memory access token, or null if not signed in or expired
  */
 export function getGmailAccessToken(): string | null {
-  return inMemoryAccessToken;
+  return tokenExpiresAt > Date.now() ? inMemoryAccessToken : null;
 }
 
 /**
  * Returns current authenticated Google user details
  */
 export function getCurrentGoogleUser() {
+  if (serverConnection?.connected && currentGoogleUser?.email !== serverConnection.email) {
+    return { email: serverConnection.email, displayName: 'Cuenta emisora de correo', photoURL: null, uid: 'server-gmail' };
+  }
   return currentGoogleUser;
 }
 
@@ -158,6 +224,9 @@ export function getCurrentGoogleUser() {
  * Signs out from Google and clears in-memory token
  */
 export async function disconnectGoogleGmail(): Promise<void> {
+  await gmailServerRequest('gmail/disconnect', {});
+  connectionGeneration += 1;
+  serverConnection = null;
   const auth = getFirebaseAuth();
   try {
     await signOut(auth);
@@ -889,6 +958,24 @@ export async function sendActivitiesViaGmail({
   from?: string;
   attachments?: EmailAttachment[];
 }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  await restoreGmailConnection();
+  if (serverConnection?.connected) {
+    try {
+      const result = await gmailServerRequest('send', {
+        to, subject, bodyText: textBody, html: htmlBody, purpose: 'manual_daily_pdf_dispatch',
+        attachments: attachments.map(attachment => ({ filename: attachment.filename, contentType: attachment.contentType, content: attachment.contentBase64 }))
+      });
+      if (result.reauthorize) {
+        inMemoryAccessToken = null;
+        tokenExpiresAt = 0;
+        serverConnection = null;
+      }
+      if (!result.success) await restoreGmailConnection();
+      return result;
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  }
   const token = getGmailAccessToken();
   if (!token) {
     return {

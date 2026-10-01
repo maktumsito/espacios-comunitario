@@ -10,6 +10,7 @@ import type { Reservation } from '../../types';
 vi.mock('../../services/gmailDispatchService', async importOriginal => ({
   ...await importOriginal<typeof import('../../services/gmailDispatchService')>(),
   getGmailAccessToken: () => 'test-token',
+  isGmailConnected: () => true,
   getCurrentGoogleUser: () => null,
   subscribeGmailAuthState: () => () => {},
   loadGmailDispatchConfig: vi.fn().mockResolvedValue({ defaultRecipients: ['recipient@example.com'], selectedActivityTypes: ['ALL'] }),

@@ -46,6 +46,8 @@ import {
   DEFAULT_GMAIL_SENDER,
   connectGoogleGmailAccount,
   getGmailAccessToken,
+  isGmailConnected,
+  isPersistentGmailConnection,
   getCurrentGoogleUser,
   disconnectGoogleGmail,
   subscribeGmailAuthState,
@@ -99,7 +101,8 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
   const [googleUser, setGoogleUser] = useState<{ email: string | null; displayName: string | null } | null>(
     getCurrentGoogleUser()
   );
-  const [hasToken, setHasToken] = useState<boolean>(Boolean(getGmailAccessToken()));
+  const [hasToken, setHasToken] = useState<boolean>(isGmailConnected());
+  const [connectionPersistent, setConnectionPersistent] = useState(isPersistentGmailConnection());
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -162,9 +165,10 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
 
   // Subscribe to auth changes
   useEffect(() => {
-    const unsub = subscribeGmailAuthState((user, token) => {
+    const unsub = subscribeGmailAuthState((user, token, serverConnected, persistent) => {
       setGoogleUser(user);
-      setHasToken(Boolean(token));
+      setHasToken(Boolean(token) || Boolean(serverConnected));
+      setConnectionPersistent(Boolean(persistent));
     });
     return unsub;
   }, []);
@@ -463,7 +467,8 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
   };
 
   const handleDisconnectGoogle = async () => {
-    await disconnectGoogleGmail();
+    try { await disconnectGoogleGmail(); }
+    catch (error) { setAuthError((error as Error).message); }
   };
 
   // Add Recipient
@@ -773,6 +778,7 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
               {hasToken ? (
                 <span className="text-slate-700">
                   Conectado con Google: <strong className="text-emerald-700">{googleUser?.email || DEFAULT_GMAIL_SENDER}</strong>
+                  <span className="block text-xs text-slate-500">{connectionPersistent ? 'Renovación automática de la autorización' : 'Sesión temporal; se conserva al recargar y requiere reconectar cuando vence'}</span>
                 </span>
               ) : (
                 <span className="text-slate-600">

@@ -26,6 +26,8 @@ import {
   DEFAULT_GMAIL_SENDER,
   connectGoogleGmailAccount,
   getGmailAccessToken,
+  isGmailConnected,
+  isPersistentGmailConnection,
   getCurrentGoogleUser,
   disconnectGoogleGmail,
   subscribeGmailAuthState,
@@ -61,7 +63,8 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
   currentUser
 }) => {
   const [googleUser, setGoogleUser] = useState<GoogleAuthUserInfo | null>(getCurrentGoogleUser());
-  const [hasToken, setHasToken] = useState(Boolean(getGmailAccessToken()));
+  const [hasToken, setHasToken] = useState(isGmailConnected());
+  const [connectionPersistent, setConnectionPersistent] = useState(isPersistentGmailConnection());
   const [isConnecting, setIsConnecting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -124,9 +127,10 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
 
   // Subscribe to auth state
   useEffect(() => {
-    const unsub = subscribeGmailAuthState((user, token) => {
+    const unsub = subscribeGmailAuthState((user, token, serverConnected, persistent) => {
       setGoogleUser(user);
-      setHasToken(Boolean(token));
+      setHasToken(Boolean(token) || Boolean(serverConnected));
+      setConnectionPersistent(Boolean(persistent));
     });
     return unsub;
   }, []);
@@ -160,7 +164,8 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
   };
 
   const handleDisconnect = async () => {
-    await disconnectGoogleGmail();
+    try { await disconnectGoogleGmail(); }
+    catch (error) { setAuthError((error as Error).message); }
   };
 
   const handleAddRecipient = () => {
@@ -400,7 +405,7 @@ export const AdminGmailConfig: React.FC<AdminGmailConfigProps> = ({
               />
               <span className="text-xs text-slate-600">
                 {hasToken ? (
-                  <strong className="text-emerald-700">Autorizado y conectado para envío de correos</strong>
+                  <strong className="text-emerald-700">{connectionPersistent ? 'Conectado con renovación automática' : 'Conectado; sesión temporal recuperable al recargar'}</strong>
                 ) : (
                   <span className="text-amber-700">Requiere conectar con Google para emitir correos</span>
                 )}

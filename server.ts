@@ -1,3 +1,4 @@
+import { GmailConnection } from './server/gmailConnection';
 import { selectDispatchReservations, isDispatchLoan as isLoan, isDispatchableReservation } from './src/utils/activityDispatchSelection';
 import express from 'express';
 import path from 'path';
@@ -25,7 +26,7 @@ import {
   getDailySchedulePdfFilename,
   docToBase64
 } from './src/utils/dailySchedulePdf';
-import { calculateActivityDatesForDispatchDate } from './src/services/gmailDispatchService';
+import { buildRfc2822Email, calculateActivityDatesForDispatchDate } from './src/services/gmailDispatchService';
 import { formatDateDDMMYYYY } from './src/utils/dateUtils';
 
 // Load environment variables
@@ -76,6 +77,27 @@ function getServerDb(): Firestore | null {
   }
   return dbInstance;
 }
+
+const gmailConnection = new GmailConnection({
+  clientId: process.env.GMAIL_OAUTH_CLIENT_ID,
+  clientSecret: process.env.GMAIL_OAUTH_CLIENT_SECRET,
+  redirectUri: process.env.GMAIL_OAUTH_REDIRECT_URI || (process.env.APP_URL?.startsWith('http') ? process.env.APP_URL.replace(/\/$/, '') + '/api/email/gmail/callback' : undefined),
+  encryptionSecret: process.env.GMAIL_TOKEN_ENCRYPTION_KEY,
+  sender: 'cristianshute@gmail.com',
+  store: {
+    async read() {
+      const db = getServerDb();
+      if (!db) throw new Error('Base de datos de credenciales no disponible.');
+      const snap = await getDoc(doc(db, 'configuracion_sistema', 'gmail_oauth_credentials'));
+      return snap.exists() ? snap.data().encrypted || null : null;
+    },
+    async write(encrypted) {
+      const db = getServerDb();
+      if (!db) throw new Error('Base de datos de credenciales no disponible.');
+      await setDoc(doc(db, 'configuracion_sistema', 'gmail_oauth_credentials'), { encrypted, updatedAt: new Date().toISOString() });
+    }
+  }
+});
 
 // Helper to get time in America/Santiago
 function getSantiagoTime(): {
@@ -137,15 +159,17 @@ export interface EmailSendOptions {
   html?: string;
   purpose?: string;
   attachments?: EmailAttachmentServer[];
+  gmailAccessToken?: string | null;
 }
 
 interface EmailSendResult {
   success: boolean;
-  mode: 'smtp' | 'resend' | 'logged' | 'unconfigured';
+  mode: 'smtp' | 'resend' | 'gmail_api' | 'logged' | 'unconfigured';
   messageId?: string;
   timestamp: string;
   error?: string;
   attachmentsCount?: number;
+  reauthorize?: boolean;
 }
 
 async function sendEmailServer(options: EmailSendOptions): Promise<EmailSendResult> {
@@ -235,6 +259,33 @@ async function sendEmailServer(options: EmailSendOptions): Promise<EmailSendResu
         timestamp: nowIso
       };
     }
+  }
+
+  // Server-side OAuth renews Gmail authorization without an open browser.
+  try {
+    let accessToken = options.gmailAccessToken || await gmailConnection.getAccessToken();
+    if (accessToken) {
+      const raw = buildRfc2822Email({
+        from: 'cristianshute@gmail.com', to: Array.isArray(to) ? to : [to], subject,
+        htmlBody: html || bodyText, textBody: bodyText,
+        attachments: attachments.map(attachment => ({ filename: attachment.filename, contentType: attachment.contentType || 'application/pdf', contentBase64: attachment.content }))
+      });
+      const deliver = (token: string) => fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ raw })
+      });
+      let response = await deliver(accessToken);
+      if (response.status === 401) {
+        accessToken = await gmailConnection.getAccessToken(true);
+        if (accessToken) response = await deliver(accessToken);
+      }
+      const data = await response.json();
+      if (response.status === 401) return { success: false, mode: 'gmail_api', reauthorize: true, error: 'La autorización de Gmail venció. Vuelve a conectar con Google.', timestamp: nowIso };
+      if (!response.ok) throw new Error(data.error?.message || 'Gmail no pudo enviar el correo.');
+      await logDispatchToFirestore({ purpose, recipients, subject, mode: 'gmail_api', success: true, messageId: data.id, attachmentsCount: attachments.length, timestamp: nowIso });
+      return { success: true, mode: 'gmail_api', messageId: data.id, attachmentsCount: attachments.length, timestamp: nowIso };
+    }
+  } catch (error) {
+    return { success: false, mode: 'gmail_api', reauthorize: (error as Error).name === 'GmailAuthorizationExpired', error: (error as Error).message, timestamp: nowIso };
   }
 
   // 2. Check for Resend API Key (free tier: 3000 emails/month)
@@ -774,10 +825,13 @@ async function startServer() {
     const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASSWORD;
     const hasSmtp = Boolean(smtpPass && smtpUser);
     const hasResend = Boolean(process.env.RESEND_API_KEY);
+    const gmail = await gmailConnection.status(req).catch(() => ({ connected: false, persistent: false }));
 
     res.json({
-      active: true,
-      provider: hasSmtp ? 'smtp_gmail' : hasResend ? 'resend' : 'autonomous_direct',
+      active: hasSmtp || hasResend || gmail.connected,
+      provider: hasSmtp ? 'smtp_gmail' : gmail.connected ? 'gmail_api' : hasResend ? 'resend' : 'unconfigured',
+      gmailConnected: gmail.connected,
+      gmailPersistent: gmail.persistent,
       smtpConfigured: hasSmtp,
       resendConfigured: hasResend,
       timezone: TIMEZONE,
@@ -868,6 +922,8 @@ async function startServer() {
     }
   }
 
+  gmailConnection.register(app, requireAuth);
+
   app.post('/api/email/send', requireAuth, async (req, res) => {
     try {
       const user = (req as any).user;
@@ -903,9 +959,11 @@ async function startServer() {
         bodyText: String(bodyText).slice(0, 10000),
         html: html ? String(html).slice(0, 50000) : undefined,
         purpose: purpose || 'authenticated_request',
+        gmailAccessToken: gmailConnection.sessionAccessToken(req),
         attachments
       });
 
+      if (result.reauthorize) gmailConnection.clearSession(res);
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e?.message || 'Error sending email' });
