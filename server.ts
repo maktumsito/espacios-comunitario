@@ -177,6 +177,33 @@ async function sendEmailServer(options: EmailSendOptions): Promise<EmailSendResu
   const recipients = Array.isArray(to) ? to.join(', ') : to;
   const nowIso = new Date().toISOString();
 
+  // Server-side OAuth renews Gmail authorization without an open browser.
+  try {
+    let accessToken = options.gmailAccessToken || await gmailConnection.getAccessToken();
+    if (accessToken) {
+      const raw = buildRfc2822Email({
+        from: 'cristianshute@gmail.com', to: Array.isArray(to) ? to : [to], subject,
+        htmlBody: html || bodyText, textBody: bodyText,
+        attachments: attachments.map(attachment => ({ filename: attachment.filename, contentType: attachment.contentType || 'application/pdf', contentBase64: attachment.content }))
+      });
+      const deliver = (token: string) => fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ raw })
+      });
+      let response = await deliver(accessToken);
+      if (response.status === 401) {
+        accessToken = await gmailConnection.getAccessToken(true);
+        if (accessToken) response = await deliver(accessToken);
+      }
+      const data = await response.json();
+      if (response.status === 401) return { success: false, mode: 'gmail_api', reauthorize: true, error: 'La autorización de Gmail venció. Vuelve a conectar con Google.', timestamp: nowIso };
+      if (!response.ok) throw new Error(data.error?.message || 'Gmail no pudo enviar el correo.');
+      await logDispatchToFirestore({ purpose, recipients, subject, mode: 'gmail_api', success: true, messageId: data.id, attachmentsCount: attachments.length, timestamp: nowIso });
+      return { success: true, mode: 'gmail_api', messageId: data.id, attachmentsCount: attachments.length, timestamp: nowIso };
+    }
+  } catch (error) {
+    return { success: false, mode: 'gmail_api', reauthorize: (error as Error).name === 'GmailAuthorizationExpired', error: (error as Error).message, timestamp: nowIso };
+  }
+
   // 1. Automatic Gmail SMTP & Custom SMTP config
   const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || 'cristianshute@gmail.com';
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASSWORD;
@@ -259,33 +286,6 @@ async function sendEmailServer(options: EmailSendOptions): Promise<EmailSendResu
         timestamp: nowIso
       };
     }
-  }
-
-  // Server-side OAuth renews Gmail authorization without an open browser.
-  try {
-    let accessToken = options.gmailAccessToken || await gmailConnection.getAccessToken();
-    if (accessToken) {
-      const raw = buildRfc2822Email({
-        from: 'cristianshute@gmail.com', to: Array.isArray(to) ? to : [to], subject,
-        htmlBody: html || bodyText, textBody: bodyText,
-        attachments: attachments.map(attachment => ({ filename: attachment.filename, contentType: attachment.contentType || 'application/pdf', contentBase64: attachment.content }))
-      });
-      const deliver = (token: string) => fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-        method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ raw })
-      });
-      let response = await deliver(accessToken);
-      if (response.status === 401) {
-        accessToken = await gmailConnection.getAccessToken(true);
-        if (accessToken) response = await deliver(accessToken);
-      }
-      const data = await response.json();
-      if (response.status === 401) return { success: false, mode: 'gmail_api', reauthorize: true, error: 'La autorización de Gmail venció. Vuelve a conectar con Google.', timestamp: nowIso };
-      if (!response.ok) throw new Error(data.error?.message || 'Gmail no pudo enviar el correo.');
-      await logDispatchToFirestore({ purpose, recipients, subject, mode: 'gmail_api', success: true, messageId: data.id, attachmentsCount: attachments.length, timestamp: nowIso });
-      return { success: true, mode: 'gmail_api', messageId: data.id, attachmentsCount: attachments.length, timestamp: nowIso };
-    }
-  } catch (error) {
-    return { success: false, mode: 'gmail_api', reauthorize: (error as Error).name === 'GmailAuthorizationExpired', error: (error as Error).message, timestamp: nowIso };
   }
 
   // 2. Check for Resend API Key (free tier: 3000 emails/month)
@@ -829,7 +829,7 @@ async function startServer() {
 
     res.json({
       active: hasSmtp || hasResend || gmail.connected,
-      provider: hasSmtp ? 'smtp_gmail' : gmail.connected ? 'gmail_api' : hasResend ? 'resend' : 'unconfigured',
+      provider: gmail.connected ? 'gmail_api' : hasSmtp ? 'smtp_gmail' : hasResend ? 'resend' : 'unconfigured',
       gmailConnected: gmail.connected,
       gmailPersistent: gmail.persistent,
       smtpConfigured: hasSmtp,

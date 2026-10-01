@@ -117,8 +117,7 @@ export class GmailConnection {
   async status(req: Request) {
     const persistent = Boolean(await this.storedCredential());
     const temporary = Boolean(this.sessionAccessToken(req));
-    const smtp = Boolean((process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASSWORD) && (process.env.SMTP_USER || process.env.GMAIL_USER || this.options.sender) === this.options.sender);
-    return { connected: persistent || temporary || smtp, persistent: persistent || smtp, oauthConfigured: this.oauthConfigured, email: this.options.sender };
+    return { connected: persistent || temporary, persistent, oauthConfigured: this.oauthConfigured, email: this.options.sender };
   }
 
   private sameOrigin(req: Request): boolean {

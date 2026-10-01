@@ -26,6 +26,13 @@ async function withRoutes(connection: GmailConnection, run: (base: string) => Pr
 }
 
 describe('Gmail server authorization', () => {
+  it('does not treat an unverified SMTP password as an OAuth authorization', async () => {
+    vi.stubEnv('SMTP_PASS', 'unverified-password');
+    vi.stubEnv('SMTP_USER', email);
+    expect(await new GmailConnection(options()).status({ headers: {} } as Request))
+      .toMatchObject({ connected: false, persistent: false, oauthConfigured: true });
+  });
+
   it('recovers encrypted credentials after a server restart and renews expired tokens once for concurrent sends', async () => {
     const config = options();
     const original = new GmailConnection(config);
