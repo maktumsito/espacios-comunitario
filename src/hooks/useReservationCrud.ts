@@ -10,14 +10,21 @@ import {
   deleteReservationsBatch,
   deleteSeriesByRecurrenteId,
   seedAllToFirestore,
-  deleteAllHolidayReservations
+  deleteAllHolidayReservations,
+  getDeletedIds,
+  recordDeletedId,
+  unrecordDeletedId
 } from '../services/reservationService';
 import { recordAuditEntry, computeReservationDiff } from '../services/auditLogService';
 import { notifyTopamiento, notifyImportantActivity } from '../services/notificationService';
 import {
   detectBatchConflicts,
   formatConflictMessage,
-  DetectedConflictDetail
+  DetectedConflictDetail,
+  isReservationActiveForAvailability,
+  timeToMinutes,
+  formatMinutesToTime,
+  getConstituentSpaces
 } from '../utils/conflictDetector';
 import {
   AuthUser,
@@ -60,7 +67,8 @@ export interface UseReservationCrudReturn {
     generateSeries?: boolean,
     seriesDates?: (string | { fecha: string; horaInicio?: string; horaFin?: string; espacio?: string })[],
     updateWholeSeries?: boolean,
-    batchUpdateInfo?: BatchUpdateInfo
+    batchUpdateInfo?: BatchUpdateInfo,
+    allowConflictOverride?: boolean
   ) => Promise<boolean>;
   handleDelete: (id: string, isSeries?: boolean, seriesId?: string) => Promise<void>;
   handleConfirmDeleteSingle: (id: string) => Promise<void>;
@@ -80,6 +88,7 @@ export interface UseReservationCrudReturn {
   handleImportReservations: (importedList: Reservation[]) => Promise<void>;
   handleDeleteAllHolidays: () => Promise<{ deletedCount: number }>;
   handleDuplicateReservation: (sourceReserva: Reservation) => void;
+  handleMergeReservations: (targetReservationId: string, sourceReservationId: string) => Promise<boolean>;
 }
 
 export function useReservationCrud({
@@ -571,7 +580,8 @@ export function useReservationCrud({
     generateSeries?: boolean,
     seriesDates?: (string | { fecha: string; horaInicio?: string; horaFin?: string; espacio?: string })[],
     updateWholeSeries?: boolean,
-    batchUpdateInfo?: BatchUpdateInfo
+    batchUpdateInfo?: BatchUpdateInfo,
+    allowConflictOverride?: boolean
   ): Promise<boolean> => {
     const previousReservations = reservations;
     try {
@@ -585,20 +595,29 @@ export function useReservationCrud({
         }
 
         const { scope, updatedReservations, affectedIds } = batchUpdateInfo;
-        if (!updatedReservations || updatedReservations.length === 0) {
-          triggerSyncToast('No se encontraron reservas para actualizar.', 'warning');
+        const deletedSet = getDeletedIds();
+        const activeUpdated = (updatedReservations || []).filter(
+          (r) => !deletedSet.has(r.id) && r.estado !== 'eliminada' && isReservationActiveForAvailability(r, deletedSet)
+        );
+        if (activeUpdated.length === 0) {
+          triggerSyncToast('No se encontraron reservas activas para actualizar.', 'warning');
           return false;
         }
 
+        const cleanAffectedIds = affectedIds.filter((id) => !deletedSet.has(id));
+        const cleanReservations = reservations.filter(
+          (r) => !deletedSet.has(r.id) && isReservationActiveForAvailability(r, deletedSet)
+        );
+
         // Validate conflicts excluding affected reservations
         const conflictsFound = detectBatchConflicts(
-          updatedReservations,
-          reservations,
-          new Set(affectedIds),
+          activeUpdated,
+          cleanReservations,
+          new Set(cleanAffectedIds),
           scope === 'series' ? (reserva.serieRecurrente || reserva.recurrenteId) : undefined
         );
 
-        if (conflictsFound.length > 0) {
+        if (conflictsFound.length > 0 && !allowConflictOverride) {
           const firstConflict = conflictsFound[0];
           const conflictMsg = formatConflictMessage(firstConflict);
           triggerSyncToast(`Operación bloqueada por conflicto de disponibilidad:\n\n${conflictMsg}\n\nNo se realizaron modificaciones.`, 'error');
@@ -609,7 +628,7 @@ export function useReservationCrud({
         setReservations((prev) => {
           const map = new Map<string, Reservation>();
           prev.forEach((r) => map.set(r.id, r));
-          updatedReservations.forEach((r) => map.set(r.id, r));
+          activeUpdated.forEach((r) => map.set(r.id, r));
           return Array.from(map.values()).sort((a, b) => {
             if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
             return a.horaInicio.localeCompare(b.horaInicio);
@@ -619,7 +638,7 @@ export function useReservationCrud({
         // Instant UI reaction: close modal immediately and notify
         setIsReservationModalOpen(false);
         setEditingReservation(null);
-        triggerSyncToast(`✓ ${updatedReservations.length} reservas actualizadas al instante`, 'success');
+        triggerSyncToast(`✓ ${activeUpdated.length} reservas actualizadas al instante`, 'success');
 
         const scopeNames: Record<string, string> = {
           single: 'Solo esta reserva',
@@ -628,20 +647,20 @@ export function useReservationCrud({
           dateRange: 'Rango de fechas',
           selected: 'Fechas seleccionadas'
         };
-        const firstRes = updatedReservations[0];
+        const firstRes = activeUpdated[0];
 
         // Persist to Firestore and record audit in background
         (async () => {
           try {
-            if (updatedReservations.length === 1) {
-              await saveReservation(updatedReservations[0]);
+            if (activeUpdated.length === 1) {
+              await saveReservation(activeUpdated[0]);
             } else {
-              await saveReservationsBatch(updatedReservations);
+              await saveReservationsBatch(activeUpdated);
             }
 
             await recordAuditEntry({
               action: 'UPDATE',
-              description: batchUpdateInfo.description || `Modificadas ${updatedReservations.length} reservas (${scopeNames[scope] || scope}) para '${firstRes.tipoActividad}' de ${firstRes.responsable}`,
+              description: batchUpdateInfo.description || `Modificadas ${activeUpdated.length} reservas (${scopeNames[scope] || scope}) para '${firstRes.tipoActividad}' de ${firstRes.responsable}`,
               reservaId: firstRes.id,
               user: currentUser,
               reservaTitle: firstRes.tipoActividad,
@@ -649,7 +668,7 @@ export function useReservationCrud({
               reservaEspacio: firstRes.espacio,
               reservaHorario: `${firstRes.horaInicio} - ${firstRes.horaFin}`,
               reservaResponsable: firstRes.responsable,
-              newState: updatedReservations
+              newState: activeUpdated
             });
           } catch (err: any) {
             console.error('Error saving batch reservations in background:', err);
@@ -701,12 +720,17 @@ export function useReservationCrud({
           return false;
         }
         const seriesId = reserva.serieRecurrente || reserva.recurrenteId;
+        const deletedSet = getDeletedIds();
         
-        // Find all active reservations in the series
+        // Find all active reservations in the series (strictly exclude deleted items)
         const seriesMatches = reservations.filter(
           (r) =>
-            Boolean(seriesId && (r.serieRecurrente === seriesId || r.recurrenteId === seriesId)) ||
-            (r.id === reserva.id)
+            !deletedSet.has(r.id) &&
+            r.estado !== 'eliminada' &&
+            (r as any).eliminada !== true &&
+            isReservationActiveForAvailability(r) &&
+            (Boolean(seriesId && (r.serieRecurrente === seriesId || r.recurrenteId === seriesId)) ||
+              r.id === reserva.id)
         );
 
         if (seriesMatches.length > 0) {
@@ -821,15 +845,20 @@ export function useReservationCrud({
             }));
           }
 
+          const deletedSet = getDeletedIds();
+          const cleanReservations = reservations.filter(
+            (r) => !deletedSet.has(r.id) && isReservationActiveForAvailability(r, deletedSet)
+          );
+
           // Detect any batch conflicts independently for every segment excluding current series
           const conflictsFound = detectBatchConflicts(
             updatedSeriesList,
-            reservations,
+            cleanReservations,
             new Set(seriesMatches.map((m) => m.id)),
             finalSeriesId
           );
 
-          if (conflictsFound.length > 0) {
+          if (conflictsFound.length > 0 && !allowConflictOverride) {
             const firstConflict = conflictsFound[0];
             const conflictMsg = formatConflictMessage(firstConflict);
             triggerSyncToast(`Operación bloqueada por conflicto de disponibilidad:\n\n${conflictMsg}\n\nNo se realizaron modificaciones en la serie.`, 'error');
@@ -978,10 +1007,15 @@ export function useReservationCrud({
           };
         });
 
-        // Detect any conflicts independently for every candidate segment against database
-        const conflictsFound = detectBatchConflicts(seriesList, reservations);
+        const deletedSet = getDeletedIds();
+        const cleanReservations = reservations.filter(
+          (r) => !deletedSet.has(r.id) && isReservationActiveForAvailability(r, deletedSet)
+        );
 
-        if (conflictsFound.length > 0) {
+        // Detect any conflicts independently for every candidate segment against database
+        const conflictsFound = detectBatchConflicts(seriesList, cleanReservations);
+
+        if (conflictsFound.length > 0 && !allowConflictOverride) {
           const firstConflict = conflictsFound[0];
           const conflictMsg = formatConflictMessage(firstConflict);
           triggerSyncToast(`Creación bloqueada por conflicto de disponibilidad:\n\n${conflictMsg}\n\nNo se crearon las reservas.`, 'error');
@@ -1084,9 +1118,13 @@ export function useReservationCrud({
           triggerSyncToast('Permiso denegado: No tienes autorización para registrar nuevas reservas (gestión controlada por Cristian Shute).', 'error');
           return false;
         }
-        const conflictsFound = detectBatchConflicts([cleanReserva], reservations, new Set([cleanReserva.id]));
+        const deletedSet = getDeletedIds();
+        const cleanReservations = reservations.filter(
+          (r) => !deletedSet.has(r.id) && isReservationActiveForAvailability(r, deletedSet)
+        );
+        const conflictsFound = detectBatchConflicts([cleanReserva], cleanReservations, new Set([cleanReserva.id]));
 
-        if (conflictsFound.length > 0) {
+        if (conflictsFound.length > 0 && !allowConflictOverride) {
           const firstConflict = conflictsFound[0];
           const conflictMsg = formatConflictMessage(firstConflict);
           triggerSyncToast(`Operación bloqueada por conflicto de disponibilidad:\n\n${conflictMsg}\n\nNo se guardó la reserva.`, 'error');
@@ -1180,6 +1218,179 @@ export function useReservationCrud({
     }
   }, [reservations, currentUser, triggerSyncToast, setReservations, setIsReservationModalOpen, setEditingReservation, setConflictReportData]);
 
+  const handleMergeReservations = useCallback(async (
+    targetReservationId: string,
+    sourceReservationId: string
+  ): Promise<boolean> => {
+    if (!targetReservationId || !sourceReservationId || targetReservationId === sourceReservationId) {
+      triggerSyncToast('Debes seleccionar dos reservas distintas para unificarlas.', 'error');
+      return false;
+    }
+
+    if (!userCanEditReservations(currentUser) || !userCanDeleteReservations(currentUser)) {
+      triggerSyncToast('Permiso denegado: No tienes autorización para unificar o fusionar reservas (gestión controlada por Cristian Shute).', 'error');
+      return false;
+    }
+
+    const previousReservations = reservations;
+    const target = reservations.find((r) => r.id === targetReservationId);
+    const source = reservations.find((r) => r.id === sourceReservationId);
+
+    if (!target || !source) {
+      triggerSyncToast('No se encontró una de las reservas seleccionadas para la unificación.', 'error');
+      return false;
+    }
+
+    // Determine unified start and end times
+    const tStartMin = timeToMinutes(target.horaInicio);
+    let tEndMin = timeToMinutes(target.horaFin);
+    if ((target.horaFin === '00:00' || target.horaFin === '24:00' || tEndMin === 0) && tStartMin > 0 && !target.terminaDiaSiguiente) {
+      tEndMin = 1440;
+    }
+
+    const sStartMin = timeToMinutes(source.horaInicio);
+    let sEndMin = timeToMinutes(source.horaFin);
+    if ((source.horaFin === '00:00' || source.horaFin === '24:00' || sEndMin === 0) && sStartMin > 0 && !source.terminaDiaSiguiente) {
+      sEndMin = 1440;
+    }
+
+    const mergedStartMin = Math.min(tStartMin, sStartMin);
+    const mergedEndMin = Math.max(tEndMin, sEndMin);
+    const mergedHoraInicio = formatMinutesToTime(mergedStartMin);
+    const mergedHoraFin = mergedEndMin >= 1440 ? '23:59' : formatMinutesToTime(mergedEndMin);
+
+    // Combine spaces
+    let mergedEspacio = target.espacio;
+    if (normalizeSpaceName(target.espacio) !== normalizeSpaceName(source.espacio)) {
+      const partsA = getConstituentSpaces(target.espacio);
+      const partsB = getConstituentSpaces(source.espacio);
+      const combined = Array.from(new Set([...partsA, ...partsB]));
+      mergedEspacio = combined.join(' / ');
+    }
+
+    // Combine descriptions cleanly without repetition
+    let mergedDescripcion = (target.descripcion || '').trim();
+    const sourceDesc = (source.descripcion || '').trim();
+    if (sourceDesc && !mergedDescripcion.includes(sourceDesc)) {
+      mergedDescripcion = mergedDescripcion
+        ? `${mergedDescripcion}\n[Unida con ${source.tipoActividad}]: ${sourceDesc}`
+        : sourceDesc;
+    }
+
+    // Combine comments
+    let mergedComentarios = (target.comentarios || '').trim();
+    const sourceComments = (source.comentarios || '').trim();
+    if (sourceComments && !mergedComentarios.includes(sourceComments)) {
+      mergedComentarios = mergedComentarios
+        ? `${mergedComentarios} | ${sourceComments}`
+        : sourceComments;
+    }
+
+    // Combine equipment
+    const equipMap = new Map<string, any>();
+    (target.equipamientoSolicitado || []).forEach((eq) => {
+      equipMap.set(eq.equipmentId || eq.equipmentName, { ...eq });
+    });
+    (source.equipamientoSolicitado || []).forEach((eq) => {
+      const key = eq.equipmentId || eq.equipmentName;
+      const existing = equipMap.get(key);
+      if (existing) {
+        equipMap.set(key, {
+          ...existing,
+          quantity: Math.max(existing.quantity, eq.quantity),
+          notes: [existing.notes, eq.notes].filter(Boolean).join(' | ')
+        });
+      } else {
+        equipMap.set(key, { ...eq });
+      }
+    });
+
+    const nowIso = new Date().toISOString();
+    const mergedReserva: Reservation = {
+      ...target,
+      fecha: target.fecha,
+      horaInicio: mergedHoraInicio,
+      horaFin: mergedHoraFin,
+      terminaDiaSiguiente: Boolean(target.terminaDiaSiguiente || source.terminaDiaSiguiente || mergedEndMin > 1440),
+      espacio: mergedEspacio,
+      tipoActividad: target.tipoActividad || source.tipoActividad,
+      descripcion: mergedDescripcion,
+      comentarios: mergedComentarios,
+      responsable: target.responsable || source.responsable,
+      rut: target.rut || source.rut || '',
+      telefonoContacto: target.telefonoContacto || source.telefonoContacto || '',
+      emailContacto: target.emailContacto || source.emailContacto || '',
+      domicilio: target.domicilio || source.domicilio || '',
+      cantidadParticipantes: Math.max(Number(target.cantidadParticipantes) || 0, Number(source.cantidadParticipantes) || 0) || 10,
+      equipamientoSolicitado: Array.from(equipMap.values()),
+      importante: (target.importante === 'Sí' || source.importante === 'Sí') ? 'Sí' : 'No',
+      requiereCartaCompromiso: Boolean(target.requiereCartaCompromiso || source.requiereCartaCompromiso),
+      estado: 'activa',
+      editadoPor: currentUser?.name || currentUser?.username || 'Usuario',
+      fechaEdicion: format(new Date(), 'dd/MM/yyyy HH:mm:ss'),
+      version: ((target as any)?.version || 0) + 1,
+      updatedAt: nowIso
+    };
+
+    // Check conflict against OTHER reservations (excluding both target and source)
+    const deletedSet = getDeletedIds();
+    const cleanReservations = reservations.filter(
+      (r) => !deletedSet.has(r.id) && isReservationActiveForAvailability(r, deletedSet)
+    );
+    const conflicts = detectBatchConflicts([mergedReserva], cleanReservations, new Set([target.id, source.id]));
+    if (conflicts.length > 0) {
+      const firstConflict = conflicts[0];
+      const conflictMsg = formatConflictMessage(firstConflict);
+      triggerSyncToast(`No se pueden juntar las reservas debido a un conflicto con otra actividad:\n\n${conflictMsg}`, 'error');
+      return false;
+    }
+
+    // 1. Optimistic React state update
+    recordDeletedId(source.id);
+    setReservations((prev) => {
+      const filtered = prev.filter((r) => r.id !== source.id);
+      const targetIdx = filtered.findIndex((r) => r.id === target.id);
+      if (targetIdx >= 0) {
+        filtered[targetIdx] = mergedReserva;
+      } else {
+        filtered.push(mergedReserva);
+      }
+      return filtered.sort((a, b) => {
+        if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
+        return a.horaInicio.localeCompare(b.horaInicio);
+      });
+    });
+
+    triggerSyncToast(`✓ Reservas unificadas con éxito (${mergedReserva.horaInicio} – ${mergedReserva.horaFin} en ${mergedReserva.espacio})`, 'success');
+
+    // 2. Persist to Firestore in background
+    (async () => {
+      try {
+        await saveReservation(mergedReserva);
+        await deleteReservationById(source.id);
+        await recordAuditEntry({
+          action: 'UPDATE',
+          description: `Reservas unificadas: '${target.tipoActividad}' (${target.horaInicio}-${target.horaFin}) se unió con '${source.tipoActividad}' (${source.horaInicio}-${source.horaFin} en ${source.espacio}). Horario resultante: ${mergedReserva.horaInicio}-${mergedReserva.horaFin} en ${mergedReserva.espacio}`,
+          reservaId: mergedReserva.id,
+          user: currentUser,
+          reservaTitle: mergedReserva.tipoActividad,
+          reservaFecha: mergedReserva.fecha,
+          reservaEspacio: mergedReserva.espacio,
+          reservaHorario: `${mergedReserva.horaInicio} - ${mergedReserva.horaFin}`,
+          reservaResponsable: mergedReserva.responsable,
+          newState: mergedReserva
+        });
+      } catch (err: any) {
+        console.error('Error persisting merged reservations:', err);
+        setReservations(previousReservations);
+        unrecordDeletedId(source.id);
+        triggerSyncToast(`⚠️ Error al sincronizar reservas unificadas: ${err?.message || 'Error de conexión'}`, 'error');
+      }
+    })();
+
+    return true;
+  }, [reservations, currentUser, triggerSyncToast, setReservations]);
+
   return {
     handleCreateOrUpdate,
     handleDelete,
@@ -1194,6 +1405,7 @@ export function useReservationCrud({
     handleSyncAllToFirebase,
     handleImportReservations,
     handleDeleteAllHolidays,
-    handleDuplicateReservation
+    handleDuplicateReservation,
+    handleMergeReservations
   };
 }

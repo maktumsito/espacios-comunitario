@@ -17,7 +17,7 @@ import { INITIAL_RESERVATIONS } from '../data/initialData';
 import { isChileanHoliday, verifyHolidayOverrideKey } from '../utils/holidayUtils';
 import { normalizeSpaceName } from '../data/spacesData';
 import { getChileLocalDateString } from '../utils/dateUtils';
-import { checkSingleConflict } from '../utils/conflictDetector';
+import { checkSingleConflict, isReservationActiveForAvailability } from '../utils/conflictDetector';
 import {
   getIndexedDbReservations,
   setIndexedDbReservations
@@ -37,7 +37,6 @@ export const SLOTS_COLLECTION = 'schedule_slots';
 const COLLECTION_NAME = 'reservas';
 const LOCAL_STORAGE_KEY = `reservas_comunitarias_cache_v${CURRENT_CACHE_VERSION}`;
 const CACHE_METADATA_KEY = `reservas_comunitarias_meta_v${CURRENT_CACHE_VERSION}`;
-const DELETED_IDS_KEY = 'reservas_comunitarias_deleted_v1';
 
 const isBrowser = typeof window !== 'undefined' && typeof localStorage !== 'undefined';
 
@@ -168,75 +167,23 @@ export function compareReservationsByDate(a: Reservation, b: Reservation): numbe
 // DELETED IDS TRACKER (PREVENTS PHANTOM RESURRECTIONS)
 // ============================================================================
 
-export function getDeletedIds(): Set<string> {
-  if (!isBrowser) return new Set<string>();
-  try {
-    const raw = localStorage.getItem(DELETED_IDS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return new Set(parsed);
-      }
-    }
-  } catch (e) {
-    console.warn('Error reading deleted IDs cache', e);
-  }
-  return new Set<string>();
-}
+import {
+  DELETED_IDS_KEY,
+  getDeletedIds,
+  recordDeletedId,
+  recordDeletedIds,
+  unrecordDeletedId,
+  unrecordDeletedIds
+} from '../utils/deletedReservationsStore';
 
-export function recordDeletedId(id: string): void {
-  if (!isBrowser) return;
-  try {
-    const set = getDeletedIds();
-    set.add(id);
-    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(set)));
-  } catch (e) {
-    console.warn('Error saving deleted ID', e);
-  }
-}
-
-export function recordDeletedIds(ids: string[]): void {
-  if (!isBrowser) return;
-  try {
-    const set = getDeletedIds();
-    ids.forEach(id => set.add(id));
-    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(set)));
-  } catch (e) {
-    console.warn('Error saving deleted IDs', e);
-  }
-}
-
-export function unrecordDeletedId(id: string): void {
-  if (!isBrowser) return;
-  try {
-    const set = getDeletedIds();
-    if (set.has(id)) {
-      set.delete(id);
-      localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(set)));
-    }
-  } catch (e) {
-    console.warn('Error removing deleted ID', e);
-  }
-}
-
-export function unrecordDeletedIds(ids: string[]): void {
-  if (!isBrowser || !ids.length) return;
-  try {
-    const set = getDeletedIds();
-    let changed = false;
-    for (const id of ids) {
-      if (set.has(id)) {
-        set.delete(id);
-        changed = true;
-      }
-    }
-    if (changed) {
-      localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(set)));
-    }
-  } catch (e) {
-    console.warn('Error removing deleted IDs batch', e);
-  }
-}
+export {
+  DELETED_IDS_KEY,
+  getDeletedIds,
+  recordDeletedId,
+  recordDeletedIds,
+  unrecordDeletedId,
+  unrecordDeletedIds
+};
 
 // ============================================================================
 // SANITIZATION FOR FIRESTORE
@@ -498,6 +445,23 @@ function setLocalCacheMetadata(meta: CacheVersionMetadata): void {
 }
 
 /**
+ * Helper to determine if a reservation was marked as deleted or is inactive.
+ */
+export function isReservationExplicitlyDeleted(
+  r: Partial<Reservation> | null | undefined,
+  deletedSet?: Set<string>
+): boolean {
+  if (!r) return true;
+  const set = deletedSet || getDeletedIds();
+  if (r.id && set.has(r.id)) return true;
+  if ((r as any).eliminada === true) return true;
+  const rawStatus = String(r.estado || (r as any).status || '').trim().toLowerCase();
+  if (['eliminada', 'eliminado', 'deleted'].includes(rawStatus)) return true;
+  if (!isReservationActiveForAvailability(r)) return true;
+  return false;
+}
+
+/**
  * Reads reservations from the versioned LocalStorage cache (with automatic legacy fallback & migration).
  */
 export function getLocalCache(): Reservation[] {
@@ -506,7 +470,7 @@ export function getLocalCache(): Reservation[] {
   // Fast path: In-memory cache is valid
   if (inMemoryReservationsCache && inMemoryReservationsCache.length > 0) {
     return inMemoryReservationsCache.filter(
-      r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha)
+      r => !isReservationExplicitlyDeleted(r, deletedSet) && !isChileanHoliday(r.fecha)
     );
   }
 
@@ -519,7 +483,7 @@ export function getLocalCache(): Reservation[] {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed) && parsed.length > 0) {
         const filtered = parsed.filter(
-          r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha)
+          r => !isReservationExplicitlyDeleted(r, deletedSet) && !isChileanHoliday(r.fecha)
         );
         inMemoryReservationsCache = filtered;
         inMemoryDataHash = calculateReservationsHash(filtered);
@@ -538,7 +502,7 @@ export function getLocalCache(): Reservation[] {
         const parsed = JSON.parse(legacyCached);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const migrated = parsed.filter(
-            r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha)
+            r => !isReservationExplicitlyDeleted(r, deletedSet) && !isChileanHoliday(r.fecha)
           );
           if (migrated.length > 0) {
             // Write to current version format and cleanup old keys
@@ -555,7 +519,7 @@ export function getLocalCache(): Reservation[] {
 
   // Fallback to static initial dataset
   const fallback = INITIAL_RESERVATIONS.filter(
-    r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha)
+    r => !isReservationExplicitlyDeleted(r, deletedSet) && !isChileanHoliday(r.fecha)
   );
   inMemoryReservationsCache = fallback;
   inMemoryDataHash = calculateReservationsHash(fallback);
@@ -573,7 +537,7 @@ export function setLocalCache(
   try {
     const deletedSet = getDeletedIds();
     const cleanData = data.filter(
-      r => !deletedSet.has(r.id) && !isChileanHoliday(r.fecha)
+      r => !isReservationExplicitlyDeleted(r, deletedSet) && !isChileanHoliday(r.fecha)
     );
 
     const newDataHash = calculateReservationsHash(cleanData);
@@ -706,8 +670,11 @@ export function subscribeToReservations(
 
           snapshot.forEach((docSnap) => {
             const rawData = docSnap.data();
-            // Filter out documents deleted in this session
-            if (deletedSet.has(docSnap.id)) {
+            // Filter out documents deleted in this session or marked as deleted
+            if (deletedSet.has(docSnap.id) || isReservationExplicitlyDeleted(rawData, deletedSet)) {
+              if (rawData && (rawData.estado === 'eliminada' || rawData.eliminada === true)) {
+                recordDeletedId(docSnap.id);
+              }
               return;
             }
             list.push(normalizeReservationFromFirestore(docSnap.id, rawData));
@@ -805,8 +772,14 @@ export function subscribeToReservationsByDateRange(
         const list: Reservation[] = [];
 
         snapshot.forEach((docSnap) => {
-          if (deletedSet.has(docSnap.id)) return;
-          list.push(normalizeReservationFromFirestore(docSnap.id, docSnap.data()));
+          const rawData = docSnap.data();
+          if (deletedSet.has(docSnap.id) || isReservationExplicitlyDeleted(rawData, deletedSet)) {
+            if (rawData && (rawData.estado === 'eliminada' || rawData.eliminada === true)) {
+              recordDeletedId(docSnap.id);
+            }
+            return;
+          }
+          list.push(normalizeReservationFromFirestore(docSnap.id, rawData));
         });
 
         const sorted = list.sort(compareReservationsByDate);
@@ -855,8 +828,14 @@ export async function fetchReservationsByDateRange(
     const list: Reservation[] = [];
 
     snapshot.forEach((docSnap) => {
-      if (deletedSet.has(docSnap.id)) return;
-      list.push(normalizeReservationFromFirestore(docSnap.id, docSnap.data()));
+      const rawData = docSnap.data();
+      if (deletedSet.has(docSnap.id) || isReservationExplicitlyDeleted(rawData, deletedSet)) {
+        if (rawData && (rawData.estado === 'eliminada' || rawData.eliminada === true)) {
+          recordDeletedId(docSnap.id);
+        }
+        return;
+      }
+      list.push(normalizeReservationFromFirestore(docSnap.id, rawData));
     });
 
     return list.sort((a, b) => {
@@ -924,18 +903,22 @@ export async function loadHistoricalReservationsMonth(
     const list: Reservation[] = [];
 
     snapshot.forEach((docSnap) => {
-      if (deletedSet.has(docSnap.id)) return;
-      list.push(normalizeReservationFromFirestore(docSnap.id, docSnap.data()));
+      const rawData = docSnap.data();
+      if (deletedSet.has(docSnap.id) || isReservationExplicitlyDeleted(rawData, deletedSet)) {
+        if (rawData && (rawData.estado === 'eliminada' || rawData.eliminada === true)) {
+          recordDeletedId(docSnap.id);
+        }
+        return;
+      }
+      list.push(normalizeReservationFromFirestore(docSnap.id, rawData));
     });
 
     loadedHistoricalMonthsSet.add(monthKey);
 
-    if (list.length > 0) {
-      const current = getLocalCache();
-      const newIds = new Set(list.map(r => r.id));
-      const merged = current.filter(r => !newIds.has(r.id)).concat(list).sort(compareReservationsByDate);
-      setLocalCache(merged);
-    }
+    const current = getLocalCache();
+    const otherMonths = current.filter(r => !r.fecha.startsWith(monthKey));
+    const merged = [...otherMonths, ...list].sort(compareReservationsByDate);
+    setLocalCache(merged);
 
     return list;
   } catch (err: any) {
@@ -970,16 +953,20 @@ export async function loadHistoricalReservationsRange(
     const list: Reservation[] = [];
 
     snapshot.forEach((docSnap) => {
-      if (deletedSet.has(docSnap.id)) return;
-      list.push(normalizeReservationFromFirestore(docSnap.id, docSnap.data()));
+      const rawData = docSnap.data();
+      if (deletedSet.has(docSnap.id) || isReservationExplicitlyDeleted(rawData, deletedSet)) {
+        if (rawData && (rawData.estado === 'eliminada' || rawData.eliminada === true)) {
+          recordDeletedId(docSnap.id);
+        }
+        return;
+      }
+      list.push(normalizeReservationFromFirestore(docSnap.id, rawData));
     });
 
-    if (list.length > 0) {
-      const current = getLocalCache();
-      const newIds = new Set(list.map(r => r.id));
-      const merged = current.filter(r => !newIds.has(r.id)).concat(list).sort(compareReservationsByDate);
-      setLocalCache(merged);
-    }
+    const current = getLocalCache();
+    const otherDates = current.filter(r => r.fecha < startDate || r.fecha > endDate);
+    const merged = [...otherDates, ...list].sort(compareReservationsByDate);
+    setLocalCache(merged);
 
     return list;
   } catch (err: any) {
@@ -993,6 +980,12 @@ export async function loadHistoricalReservationsRange(
 // ============================================================================
 
 export async function saveReservation(reserva: Reservation): Promise<void> {
+  // If reservation is already explicitly marked as deleted, avoid resurrecting or saving it
+  if (isReservationExplicitlyDeleted(reserva)) {
+    console.warn(`[saveReservation] Se omitió guardar la reserva ${reserva.id} porque está marcada como eliminada.`);
+    return;
+  }
+
   // Strict time range validation (horaInicio < horaFin or terminaDiaSiguiente)
   const timeCheck = validateTimeRange(reserva.horaInicio, reserva.horaFin, Boolean(reserva.terminaDiaSiguiente));
   if (!timeCheck.isValid) {
@@ -1060,6 +1053,7 @@ export async function saveReservation(reserva: Reservation): Promise<void> {
       }
 
       const isActiva = !reserva.estado || reserva.estado === 'activa';
+      const deletedSet = getDeletedIds();
 
       let existingBookings: Array<{
         id: string;
@@ -1073,12 +1067,13 @@ export async function saveReservation(reserva: Reservation): Promise<void> {
 
       if (slotSnap.exists()) {
         const data = slotSnap.data();
-        existingBookings = Array.isArray(data.bookings) ? data.bookings : [];
+        const rawBookings = Array.isArray(data.bookings) ? data.bookings : [];
+        existingBookings = rawBookings.filter(b => !deletedSet.has(b.id) && b.estado !== 'eliminada');
       }
 
       if (isActiva && !isChileanHoliday(reserva.fecha)) {
         for (const b of existingBookings) {
-          if (b.id !== reserva.id && (b.estado === 'activa' || !b.estado)) {
+          if (b.id !== reserva.id && (b.estado === 'activa' || !b.estado) && !deletedSet.has(b.id)) {
             if (b.startMin < endMin && startMin < b.endMin) {
               throw new Error(
                 `Conflicto de concurrencia: El espacio "${reserva.espacio}" ya fue reservado en el horario ${b.horaInicio} - ${b.horaFin} por ${b.responsable || 'otro usuario'}.`
@@ -1092,14 +1087,14 @@ export async function saveReservation(reserva: Reservation): Promise<void> {
       if (oldSlotDocRef && oldSlotSnap && oldSlotSnap.exists()) {
         const oldData = oldSlotSnap.data();
         const oldBookings = Array.isArray(oldData.bookings) ? oldData.bookings : [];
-        const filteredOld = oldBookings.filter(b => b.id !== reserva.id);
+        const filteredOld = oldBookings.filter(b => b.id !== reserva.id && !deletedSet.has(b.id) && b.estado !== 'eliminada');
         transaction.set(oldSlotDocRef, {
           bookings: filteredOld,
           updatedAt: nowIso
         }, { merge: true });
       }
 
-      const remainingBookings = existingBookings.filter(b => b.id !== reserva.id);
+      const remainingBookings = existingBookings.filter(b => b.id !== reserva.id && !deletedSet.has(b.id) && b.estado !== 'eliminada');
       if (isActiva) {
         remainingBookings.push({
           id: reserva.id,
@@ -1131,8 +1126,13 @@ export async function saveReservation(reserva: Reservation): Promise<void> {
 export async function saveReservationsBatch(reservas: readonly Reservation[]): Promise<void> {
   if (!reservas.length) return;
 
+  const deletedSet = getDeletedIds();
+  // Filter out any reservations that are explicitly marked as deleted / soft-deleted
+  const activeReservas = reservas.filter(r => !isReservationExplicitlyDeleted(r, deletedSet));
+  if (!activeReservas.length) return;
+
   // Strict time range validation (horaInicio < horaFin or terminaDiaSiguiente)
-  for (const r of reservas) {
+  for (const r of activeReservas) {
     const timeCheck = validateTimeRange(r.horaInicio, r.horaFin, Boolean(r.terminaDiaSiguiente));
     if (!timeCheck.isValid) {
       throw new Error(`Validación de Horarios fallida en reserva (${r.fecha} ${r.horaInicio} a ${r.horaFin}): ${timeCheck.error || 'La hora de término debe ser posterior a la de inicio.'}`);
@@ -1140,7 +1140,7 @@ export async function saveReservationsBatch(reservas: readonly Reservation[]): P
   }
 
   // Schema validation warnings for batch
-  reservas.forEach((r) => {
+  activeReservas.forEach((r) => {
     const val = validateReservationWithZod(r);
     if (!val.success) {
       console.warn(`[Batch Validation Warning] Reserva ${r.id} (${r.fecha} ${r.horaInicio}):`, val.errors);
@@ -1148,13 +1148,13 @@ export async function saveReservationsBatch(reservas: readonly Reservation[]): P
   });
 
   // Validation for Chilean Holidays in Batch
-  for (const r of reservas) {
+  for (const r of activeReservas) {
     if (isChileanHoliday(r.fecha) && !verifyHolidayOverrideKey(r.claveAutorizacion || '')) {
       throw new Error(`La fecha ${r.fecha} corresponde a un día feriado en Chile y requiere la clave de autorización especial "CCD".`);
     }
   }
 
-  unrecordDeletedIds(reservas.map(r => r.id));
+  unrecordDeletedIds(activeReservas.map(r => r.id));
 
   // Single-pass optimistic local cache update
   const current = getLocalCache();
@@ -1162,7 +1162,7 @@ export async function saveReservationsBatch(reservas: readonly Reservation[]): P
   current.forEach(r => currentMap.set(r.id, r));
 
   const nowIso = new Date().toISOString();
-  reservas.forEach(r => {
+  activeReservas.forEach(r => {
     const existing = currentMap.get(r.id);
     currentMap.set(r.id, {
       ...r,
@@ -1179,8 +1179,8 @@ export async function saveReservationsBatch(reservas: readonly Reservation[]): P
     const db = getDb();
     const batchPromises: Promise<void>[] = [];
 
-    for (let i = 0; i < reservas.length; i += FIRESTORE_MAX_BATCH_SIZE) {
-      const chunk = reservas.slice(i, i + FIRESTORE_MAX_BATCH_SIZE);
+    for (let i = 0; i < activeReservas.length; i += FIRESTORE_MAX_BATCH_SIZE) {
+      const chunk = activeReservas.slice(i, i + FIRESTORE_MAX_BATCH_SIZE);
       const batch = writeBatch(db);
 
       chunk.forEach(item => {
@@ -1199,7 +1199,7 @@ export async function saveReservationsBatch(reservas: readonly Reservation[]): P
 
     // Concurrency index update: synchronize schedule_slots for batch reservations
     const slotsMap = new Map<string, { fecha: string; espacio: string; bookings: any[] }>();
-    reservas.forEach(r => {
+    activeReservas.forEach(r => {
       if (!r.fecha || !r.espacio) return;
       const isActiva = !r.estado || r.estado === 'activa';
       if (!isActiva) return;

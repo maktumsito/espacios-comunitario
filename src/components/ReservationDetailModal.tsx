@@ -21,9 +21,11 @@ import {
   XCircle,
   Check,
   Ban,
-  Mail
+  Mail,
+  GitMerge
 } from 'lucide-react';
 import { CommitmentLetterModal } from './CommitmentLetterModal';
+import { MergeReservationsModal } from './MergeReservationsModal';
 import { getPhoneContactActions } from '../utils/phoneUtils';
 import { CommitmentLetterCard } from './CommitmentLetterCard';
 import { isCommitmentLetterEligible } from '../utils/commitmentLetterPdf';
@@ -48,6 +50,7 @@ interface ReservationDetailModalProps {
   onRequestDelete?: (reserva: Reservation) => void;
   onToggleRealizada?: (reserva: Reservation) => void;
   onUpdateReservation?: (updated: Reservation) => void;
+  onMergeReservations?: (targetReservationId: string, sourceReservationId: string) => Promise<boolean | void> | boolean | void;
   existingRating?: SpaceRating | null;
   onOpenRatingModal?: (reserva: Reservation, rating?: SpaceRating) => void;
   allReservations?: Reservation[];
@@ -67,6 +70,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
   onRequestDelete,
   onToggleRealizada,
   onUpdateReservation,
+  onMergeReservations,
   existingRating,
   onOpenRatingModal,
   allReservations = [],
@@ -76,6 +80,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
   onOpenGmailDispatch
 }) => {
   const [showCommitmentLetter, setShowCommitmentLetter] = React.useState(false);
+  const [showMergeModal, setShowMergeModal] = React.useState(false);
 
   // Accessible non-blocking confirmation dialog state (D4)
   const [confirmModal, setConfirmModal] = React.useState<{
@@ -778,6 +783,19 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                     <span>{reservation.estado === 'cancelada' ? 'Reactivar' : 'Cancelar Reserva'}</span>
                   </button>
                 )}
+                {onMergeReservations && (
+                  <button
+                    id="btn-detail-merge"
+                    type="button"
+                    aria-label="Juntar o fusionar con otra reserva de esta misma actividad"
+                    onClick={() => setShowMergeModal(true)}
+                    className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 hover:text-purple-800 border border-purple-200 text-xs font-bold shadow-xs transition cursor-pointer"
+                    title="Juntar con otra reserva del mismo día o solicitante para unificarlas"
+                  >
+                    <GitMerge className="w-4 h-4 text-purple-600" />
+                    <span>Juntar Reserva</span>
+                  </button>
+                )}
                 <button
                   id="btn-detail-edit"
                   type="button"
@@ -812,6 +830,24 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
           onClose={() => setShowCommitmentLetter(false)}
           reservationData={reservation}
           allReservations={allReservations}
+        />
+      )}
+
+      {/* Merge Reservations Modal */}
+      {showMergeModal && onMergeReservations && (
+        <MergeReservationsModal
+          isOpen={showMergeModal}
+          onClose={() => setShowMergeModal(false)}
+          targetReservation={reservation}
+          allReservations={allReservations}
+          onConfirmMerge={async (targetId, sourceId) => {
+            const ok = await onMergeReservations(targetId, sourceId);
+            if (ok !== false) {
+              setShowMergeModal(false);
+              onClose();
+            }
+            return ok;
+          }}
         />
       )}
 

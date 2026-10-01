@@ -8,7 +8,8 @@ import {
   BatchUpdateInfo
 } from '../types';
 import { normalizeSpaceName } from '../data/spacesData';
-import { checkSingleConflict, timeToMinutes } from '../utils/conflictDetector';
+import { checkSingleConflict, timeToMinutes, isReservationActiveForAvailability } from '../utils/conflictDetector';
+import { getDeletedIds } from '../services/reservationService';
 import { formatDateDDMMYYYY, getDayOfWeekFromDateString } from '../utils/dateUtils';
 import { checkSpaceBlocked } from '../services/spaceBlockService';
 import {
@@ -983,7 +984,7 @@ export function useReservationSaveHandler({
             updatedAt: new Date().toISOString()
           };
 
-          await Promise.resolve(
+          const singleResult = await Promise.resolve(
             onSave(updatedReserva, false, undefined, false, {
               scope: 'single',
               updatedReservations: [updatedReserva],
@@ -991,9 +992,22 @@ export function useReservationSaveHandler({
               description: `Modificada reserva individual '${updatedReserva.tipoActividad}' de ${updatedReserva.responsable} (${formatDateDDMMYYYY(updatedReserva.fecha)})`
             })
           );
+          if (singleResult === false) {
+            return;
+          }
         } else {
           // MULTI-OCCURRENCE UPDATE (future, series, dateRange, selected)
-          const updatedList: Reservation[] = affectedReservations.map((orig) => ({
+          const deletedSet = getDeletedIds();
+          const cleanAffected = affectedReservations.filter(
+            (orig) => !deletedSet.has(orig.id) && orig.estado !== 'eliminada' && isReservationActiveForAvailability(orig)
+          );
+
+          if (cleanAffected.length === 0) {
+            abortWithFeedback('No se encontraron reservas activas para actualizar en la serie seleccionada.');
+            return;
+          }
+
+          const updatedList: Reservation[] = cleanAffected.map((orig) => ({
             ...orig,
             horaInicio: effectiveFormData.horaInicio || orig.horaInicio,
             horaFin: effectiveFormData.horaFin || orig.horaFin,

@@ -7,6 +7,8 @@ import {
   verifyHolidayOverrideKey
 } from '../utils/holidayUtils';
 import { getResponsibleHistoryAlert } from '../services/ratingService';
+import { getDeletedIds } from '../services/reservationService';
+import { isReservationActiveForAvailability } from '../utils/conflictDetector';
 
 interface UseReservationSeriesStateProps {
   editingReservation?: Reservation | null;
@@ -68,10 +70,17 @@ export function useReservationSeriesState({
   // All reservations in this recurring series, sorted chronologically
   const seriesReservations = useMemo<Reservation[]>(() => {
     if (!editingReservation || isDuplicating || isSingleDayMultiSpaceReservation(editingReservation)) return [];
+    const deletedSet = getDeletedIds();
+    const isCleanActive = (r: Reservation) =>
+      !deletedSet.has(r.id) &&
+      r.estado !== 'eliminada' &&
+      (r as any).eliminada !== true &&
+      isReservationActiveForAvailability(r);
+
     const sId = editingReservation.serieRecurrente || editingReservation.recurrenteId;
     if (sId && allReservations) {
       const matches = allReservations
-        .filter((r) => r.serieRecurrente === sId || r.recurrenteId === sId)
+        .filter((r) => isCleanActive(r) && (r.serieRecurrente === sId || r.recurrenteId === sId))
         .sort((a, b) => {
           if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
           return a.horaInicio.localeCompare(b.horaInicio);
@@ -82,11 +91,12 @@ export function useReservationSeriesState({
       const matches = allReservations
         .filter(
           (r) =>
-            r.id === editingReservation.id ||
-            (r.actividadRecurrente === 'Sí' &&
-              r.tipoActividad === editingReservation.tipoActividad &&
-              r.responsable === editingReservation.responsable &&
-              r.espacio === editingReservation.espacio)
+            isCleanActive(r) &&
+            (r.id === editingReservation.id ||
+              (r.actividadRecurrente === 'Sí' &&
+                r.tipoActividad === editingReservation.tipoActividad &&
+                r.responsable === editingReservation.responsable &&
+                r.espacio === editingReservation.espacio))
         )
         .sort((a, b) => {
           if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
@@ -94,7 +104,7 @@ export function useReservationSeriesState({
         });
       if (matches.length > 0) return matches;
     }
-    return [editingReservation];
+    return isCleanActive(editingReservation) ? [editingReservation] : [];
   }, [editingReservation, isDuplicating, allReservations]);
 
   const seriesCount = seriesReservations.length > 0
@@ -104,19 +114,28 @@ export function useReservationSeriesState({
   // The subset of reservations affected based on the selected updateScope
   const affectedReservations = useMemo<Reservation[]>(() => {
     if (!editingReservation) return [];
+    const deletedSet = getDeletedIds();
+    const isCleanActive = (r: Reservation) =>
+      !deletedSet.has(r.id) &&
+      r.estado !== 'eliminada' &&
+      (r as any).eliminada !== true &&
+      isReservationActiveForAvailability(r);
+
+    const safeEditingRes = isCleanActive(editingReservation) ? [editingReservation] : [];
+
     if (!isEditingRecurring || isDuplicating) {
-      return [editingReservation];
+      return safeEditingRes;
     }
     if (updateScope === 'single') {
-      return [editingReservation];
+      return safeEditingRes;
     }
     if (updateScope === 'future') {
       const refDate = editingReservation.fecha;
       const res = seriesReservations.filter((r) => r.fecha >= refDate);
-      return res.length > 0 ? res : [editingReservation];
+      return res.length > 0 ? res : safeEditingRes;
     }
     if (updateScope === 'series') {
-      return seriesReservations.length > 0 ? seriesReservations : [editingReservation];
+      return seriesReservations.length > 0 ? seriesReservations : safeEditingRes;
     }
     if (updateScope === 'dateRange') {
       if (!rangeStartDate || !rangeEndDate) return [];
@@ -127,9 +146,9 @@ export function useReservationSeriesState({
     }
     if (updateScope === 'selected') {
       const res = seriesReservations.filter((r) => selectedOccurrenceIds.has(r.id));
-      return res.length > 0 ? res : (selectedOccurrenceIds.has(editingReservation.id) ? [editingReservation] : []);
+      return res.length > 0 ? res : (selectedOccurrenceIds.has(editingReservation.id) && isCleanActive(editingReservation) ? [editingReservation] : []);
     }
-    return [editingReservation];
+    return safeEditingRes;
   }, [
     editingReservation,
     isEditingRecurring,

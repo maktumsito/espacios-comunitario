@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Reservation, FilterState, BookingConflict } from '../types';
-import { detectAllConflicts, getConflictReservationIds } from '../utils/conflictDetector';
+import { detectAllConflicts, getConflictReservationIds, isReservationActiveForAvailability, doSpacesConflict } from '../utils/conflictDetector';
 import { getFuzzyMatchIds } from '../utils/fuzzySearch';
+import { getDeletedIds } from '../services/reservationService';
 
 export const INITIAL_FILTERS: FilterState = {
   search: '',
@@ -57,6 +58,7 @@ export interface UseFilteredReservationsReturn {
   conflicts: BookingConflict[];
   conflictReservationIds: Set<string>;
   filteredReservations: Reservation[];
+  activeReservations: Reservation[];
 }
 
 export function useFilteredReservations(reservations: Reservation[]): UseFilteredReservationsReturn {
@@ -78,15 +80,27 @@ export function useFilteredReservations(reservations: Reservation[]): UseFiltere
     filters.soloConTopamiento
   );
 
-  // Conflict calculations (Optimized single-pass derived set)
-  const conflicts = useMemo(() => detectAllConflicts(reservations), [reservations]);
-  const conflictReservationIds = useMemo(() => getConflictReservationIds(reservations, conflicts), [reservations, conflicts]);
+  // Active reservations excluding any deleted or soft-deleted items
+  const deletedSet = useMemo(() => getDeletedIds(), [reservations]);
+  const activeReservations = useMemo(() => {
+    return reservations.filter(
+      (r) =>
+        !deletedSet.has(r.id) &&
+        r.estado !== 'eliminada' &&
+        (r as any).eliminada !== true &&
+        isReservationActiveForAvailability(r)
+    );
+  }, [reservations, deletedSet]);
+
+  // Conflict calculations (Optimized single-pass derived set over active non-deleted reservations)
+  const conflicts = useMemo(() => detectAllConflicts(activeReservations), [activeReservations]);
+  const conflictReservationIds = useMemo(() => getConflictReservationIds(activeReservations, conflicts), [activeReservations, conflicts]);
 
   // Filtered reservations list (precomputing search query and filter constants outside loop)
   const filteredReservations = useMemo(() => {
     const rawSearch = filters.search ? filters.search.trim() : '';
     const hasSearch = Boolean(rawSearch);
-    const fuzzyMatchIds = hasSearch ? getFuzzyMatchIds(reservations, rawSearch) : null;
+    const fuzzyMatchIds = hasSearch ? getFuzzyMatchIds(activeReservations, rawSearch) : null;
 
     const filterEspacio = filters.espacio ? filters.espacio.toUpperCase() : null;
     const filterTipo = filters.tipoActividad || null;
@@ -102,7 +116,7 @@ export function useFilteredReservations(reservations: Reservation[]): UseFiltere
       return [];
     }
 
-    return reservations.filter((r) => {
+    return activeReservations.filter((r) => {
       // Topamientos filter
       if (filterTopamiento && !conflictReservationIds.has(r.id)) {
         return false;
@@ -117,8 +131,8 @@ export function useFilteredReservations(reservations: Reservation[]): UseFiltere
       if (filterDesde && rFecha < filterDesde) return false;
       if (filterHasta && rFecha > filterHasta) return false;
 
-      // Espacio
-      if (filterEspacio && r.espacio.toUpperCase() !== filterEspacio) {
+      // Espacio (matches exact or constituent space so compound reservations remain visible)
+      if (filterEspacio && !doSpacesConflict(r.espacio, filterEspacio)) {
         return false;
       }
 
@@ -134,7 +148,7 @@ export function useFilteredReservations(reservations: Reservation[]): UseFiltere
 
       return true;
     });
-  }, [reservations, filters, conflictReservationIds]);
+  }, [activeReservations, filters, conflictReservationIds]);
 
   return {
     filters,
@@ -145,6 +159,7 @@ export function useFilteredReservations(reservations: Reservation[]): UseFiltere
     resetFilters,
     conflicts,
     conflictReservationIds,
-    filteredReservations
+    filteredReservations,
+    activeReservations
   };
 }

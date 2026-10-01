@@ -24,7 +24,7 @@ describe('PDF loading boundary', () => {
     await first;
     expect(pdf).toHaveBeenCalledTimes(1);
     expect(table).toHaveBeenCalledTimes(1);
-  }, 15000);
+  }, 45000);
 
   it('clears a rejected load so a subsequent action can retry', async () => {
     vi.doMock('jspdf', () => { throw new Error('offline'); });

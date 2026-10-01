@@ -1,4 +1,5 @@
 import { Reservation, BookingConflict, SpaceBlock } from '../types';
+import { getDeletedIds } from './deletedReservationsStore';
 
 // ==========================================
 // CONSTANTS & RULES
@@ -103,20 +104,39 @@ export function doSpacesConflict(spaceA?: string, spaceB?: string): boolean {
 const INACTIVE_STATUSES = new Set([
   'cancelada', 'cancelado', 'cancelled',
   'rechazada', 'rechazado', 'rejected',
-  'eliminada', 'eliminado', 'deleted'
+  'eliminada', 'eliminado', 'deleted',
+  'anulada', 'anulado',
+  'suspendida', 'suspendido',
+  'descartada', 'descartado',
+  'borrada', 'borrado',
+  'inactiva', 'inactivo'
 ]);
 
 /**
  * Checks whether a given reservation is active and should block schedule availability.
- * Inactive states (cancelada, rechazada, eliminada) DO NOT block availability.
+ * Inactive states (cancelada, rechazada, eliminada, deleted tracker) DO NOT block availability.
  */
-export function isReservationActiveForAvailability(reservation?: Partial<Reservation> | null): boolean {
+export function isReservationActiveForAvailability(
+  reservation?: Partial<Reservation> | null,
+  deletedIds?: Set<string>
+): boolean {
   if (!reservation) return false;
 
-  if ((reservation as any).cancelada === true || (reservation as any).cancelada === 'Sí') {
+  const deletedSet = deletedIds || getDeletedIds();
+  if (reservation.id && deletedSet.has(reservation.id)) {
     return false;
   }
-  if ((reservation as any).eliminada === true) {
+
+  if (
+    (reservation as any).cancelada === true ||
+    (reservation as any).cancelada === 'Sí' ||
+    (reservation as any).eliminada === true ||
+    (reservation as any).deleted === true ||
+    (reservation as any).isDeleted === true ||
+    (reservation as any).borrada === true ||
+    (reservation as any).activo === false ||
+    (reservation as any).solicitudEliminacion?.aprobada === true
+  ) {
     return false;
   }
 
@@ -167,6 +187,14 @@ export function normalizeDateToIso(dateStr?: string): string {
 export function isDateExemptFromConflicts(dateString?: string): boolean {
   if (!dateString) {
     return false;
+  }
+  // Zero-allocation fast path for canonical YYYY-MM-DD
+  if (
+    dateString.length === 10 &&
+    dateString.charCodeAt(4) === 45 &&
+    dateString.charCodeAt(7) === 45
+  ) {
+    return dateString <= CONFLICT_EXEMPT_UNTIL_DATE;
   }
   const iso = normalizeDateToIso(dateString);
   if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
@@ -492,6 +520,7 @@ export function findReservationConflicts(
   options?: FindConflictsOptions
 ): DetectedConflictDetail[] {
   const detectedConflicts: DetectedConflictDetail[] = [];
+  const deletedSet = getDeletedIds();
   const excludeSet = options?.excludeReservationIds
     ? (options.excludeReservationIds instanceof Set ? options.excludeReservationIds : new Set(options.excludeReservationIds))
     : new Set<string>();
@@ -501,12 +530,12 @@ export function findReservationConflicts(
   // Active, non-exempt reservations from database
   const activeExisting = allReservations.filter((r) => {
     if (!r || !r.id) return false;
-    if (excludeSet.has(r.id)) return false;
+    if (excludeSet.has(r.id) || deletedSet.has(r.id)) return false;
     if (targetExcludeSeriesId && (r.serieRecurrente === targetExcludeSeriesId || r.recurrenteId === targetExcludeSeriesId)) {
       return false;
     }
     if (!r.fecha || isDateExemptFromConflicts(r.fecha)) return false;
-    if (!isReservationActiveForAvailability(r)) return false;
+    if (!isReservationActiveForAvailability(r, deletedSet)) return false;
     return true;
   });
 
@@ -533,7 +562,10 @@ export function findReservationConflicts(
     if (!candidate.fecha || isDateExemptFromConflicts(candidate.fecha) || !candidate.espacio) {
       continue;
     }
-    if (!isReservationActiveForAvailability(candidate)) {
+    if (candidate.id && deletedSet.has(candidate.id)) {
+      continue;
+    }
+    if (!isReservationActiveForAvailability(candidate, deletedSet)) {
       continue;
     }
 
@@ -722,11 +754,10 @@ export function checkSingleConflict(
  */
 export function detectAllConflicts(reservations: readonly Reservation[]): BookingConflict[] {
   const detectedConflicts: BookingConflict[] = [];
-  const activeReservations = reservations.filter(
-    (r) => r.fecha && !isDateExemptFromConflicts(r.fecha) && isReservationActiveForAvailability(r)
-  );
+  if (!reservations || reservations.length < 2) return detectedConflicts;
 
-  if (activeReservations.length < 2) return detectedConflicts;
+  const deletedSet = getDeletedIds();
+  const hasDeleted = deletedSet.size > 0;
 
   // Pre-calculate date-bucketed slots directly to avoid repeated parsing and inner loop filtering
   interface DaySlotItem {
@@ -739,14 +770,22 @@ export function detectAllConflicts(reservations: readonly Reservation[]): Bookin
   // Partition by date so we only compare reservations active on the same date
   const byDate = new Map<string, DaySlotItem[]>();
 
-  for (const res of activeReservations) {
+  const resLen = reservations.length;
+  for (let rIdx = 0; rIdx < resLen; rIdx++) {
+    const res = reservations[rIdx];
+    if (!res || !res.id || !res.fecha || !res.espacio) continue;
+    if (hasDeleted && deletedSet.has(res.id)) continue;
+    if (isDateExemptFromConflicts(res.fecha)) continue;
+    if (!isReservationActiveForAvailability(res, deletedSet)) continue;
+
     const intervals = getTimeIntervalsForReservation(res);
     if (intervals.length === 0) continue;
 
     const normSpace = normalizeSpace(res.espacio);
     const constituents = getConstituentSpaces(res.espacio);
 
-    for (const slot of intervals) {
+    for (let k = 0; k < intervals.length; k++) {
+      const slot = intervals[k];
       let list = byDate.get(slot.date);
       if (!list) {
         list = [];
@@ -783,9 +822,23 @@ export function detectAllConflicts(reservations: readonly Reservation[]): Bookin
         if (resA.id === resB.id) continue;
 
         // Fast space conflict check using precomputed normalized names and constituents
-        const sharesSpace =
-          itemA.normSpace === itemB.normSpace ||
-          itemA.constituents.some((pA) => itemB.constituents.includes(pA));
+        let sharesSpace = itemA.normSpace === itemB.normSpace;
+        if (!sharesSpace) {
+          const cA = itemA.constituents;
+          const cB = itemB.constituents;
+          const lenA = cA.length;
+          const lenB = cB.length;
+          for (let a = 0; a < lenA; a++) {
+            const pA = cA[a];
+            for (let b = 0; b < lenB; b++) {
+              if (pA === cB[b]) {
+                sharesSpace = true;
+                break;
+              }
+            }
+            if (sharesSpace) break;
+          }
+        }
 
         if (!sharesSpace) continue;
 

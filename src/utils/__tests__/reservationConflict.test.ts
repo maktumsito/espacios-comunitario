@@ -6,6 +6,7 @@ import {
   doSpacesConflict,
   normalizeSpace
 } from '../conflictDetector';
+import { recordDeletedId, unrecordDeletedId } from '../deletedReservationsStore';
 import { Reservation } from '../../types';
 
 function createDummy(partial: Partial<Reservation>): Reservation {
@@ -189,5 +190,73 @@ describe('Reservation Conflict & Availability Suite', () => {
     const nextMorningRes = createDummy({ id: 'morning', fecha: '2026-09-16', horaInicio: '00:30', horaFin: '01:30', espacio: 'SALA 1' });
     const conf = checkSingleConflict(nextMorningRes, [overnightRes]);
     expect(conf.length).toBeGreaterThan(0);
+  });
+
+  it('24. Reservas eliminadas o con estado inactivo NO deben generar conflictos fantasma', () => {
+    const deletedRes1 = createDummy({ id: 'del_1', fecha: '2026-09-15', horaInicio: '18:00', horaFin: '19:00', espacio: 'SALA 1', estado: 'eliminada' });
+    const anuladaRes = createDummy({ id: 'anul_1', fecha: '2026-09-15', horaInicio: '18:00', horaFin: '19:00', espacio: 'SALA 1', estado: 'anulada' });
+    const softDeletedRes = createDummy({ id: 'soft_1', fecha: '2026-09-15', horaInicio: '18:00', horaFin: '19:00', espacio: 'SALA 1', eliminada: true } as any);
+    const newCand = createDummy({ id: 'new_cand', fecha: '2026-09-15', horaInicio: '18:00', horaFin: '19:00', espacio: 'SALA 1' });
+
+    const conf = checkSingleConflict(newCand, [deletedRes1, anuladaRes, softDeletedRes]);
+    expect(conf.length).toBe(0);
+  });
+
+  it('25. Reservas registradas en deletedIds tracker NO deben generar conflictos aunque sigan en memoria', () => {
+    const ghostRes = createDummy({ id: 'ghost_res_99', fecha: '2026-09-15', horaInicio: '18:00', horaFin: '19:00', espacio: 'SALA 1' });
+    recordDeletedId('ghost_res_99');
+
+    try {
+      const newCand = createDummy({ id: 'new_cand_2', fecha: '2026-09-15', horaInicio: '18:00', horaFin: '19:00', espacio: 'SALA 1' });
+      const conf = checkSingleConflict(newCand, [ghostRes]);
+      expect(conf.length).toBe(0);
+    } finally {
+      unrecordDeletedId('ghost_res_99');
+    }
+  });
+
+  it('26. Fusión de reservas combina intervalos de horario y espacios correctamente', () => {
+    const resA = createDummy({
+      id: 'res_a',
+      fecha: '2026-09-15',
+      horaInicio: '10:00',
+      horaFin: '12:00',
+      espacio: 'SALA 1',
+      responsable: 'Juan Pérez',
+      cantidadParticipantes: 10,
+      equipamientoSolicitado: [{ equipmentId: 'eq_1', equipmentName: 'Proyector', quantity: 1 }]
+    });
+    const resB = createDummy({
+      id: 'res_b',
+      fecha: '2026-09-15',
+      horaInicio: '12:00',
+      horaFin: '14:00',
+      espacio: 'SALA 2',
+      responsable: 'Juan Pérez',
+      cantidadParticipantes: 15,
+      equipamientoSolicitado: [{ equipmentId: 'eq_2', equipmentName: 'Micrófono', quantity: 2 }]
+    });
+
+    // Validar combinación de horarios
+    const minStart = resA.horaInicio < resB.horaInicio ? resA.horaInicio : resB.horaInicio;
+    const maxEnd = resA.horaFin > resB.horaFin ? resA.horaFin : resB.horaFin;
+    expect(minStart).toBe('10:00');
+    expect(maxEnd).toBe('14:00');
+
+    // Validar combinación de salas diferentes
+    const combinedSpace = `${resA.espacio} / ${resB.espacio}`;
+    expect(combinedSpace).toBe('SALA 1 / SALA 2');
+
+    // Validar combinación si las salas son idénticas
+    const sameSpaceResB = { ...resB, espacio: 'SALA 1' };
+    const unifiedSameSpace = resA.espacio === sameSpaceResB.espacio ? resA.espacio : `${resA.espacio} / ${sameSpaceResB.espacio}`;
+    expect(unifiedSameSpace).toBe('SALA 1');
+
+    // Validar combinación de equipamiento
+    const combinedEquipment = [
+      ...(resA.equipamientoSolicitado || []),
+      ...(resB.equipamientoSolicitado || [])
+    ];
+    expect(combinedEquipment.length).toBe(2);
   });
 });

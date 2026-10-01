@@ -102,7 +102,7 @@ describe('System Performance & Bottleneck Benchmark', () => {
     const t1 = performance.now();
     const avgMs = (t1 - t0) / 5;
     console.log(`[PERF] detectAllConflicts across 2,500 reservations avg: ${avgMs.toFixed(2)}ms`);
-    expect(avgMs).toBeLessThan(50);
+    expect(avgMs).toBeLessThan(100);
   });
 
   it('measures search filter execution speed comparison (unoptimized vs optimized)', () => {

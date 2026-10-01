@@ -2,7 +2,7 @@ import { useTimelineViewport, intersectsViewport } from '../hooks/useTimelineVie
 import React, { useState, useMemo, useEffect, useRef, Suspense, useCallback } from 'react';
 import { Reservation, SpaceInfo, FilterState, SpaceBlock } from '../types';
 import { SPACES_LIST, normalizeSpaceName } from '../data/spacesData';
-import { timeToMinutes, formatMinutesToTime, getConflictReservationIds } from '../utils/conflictDetector';
+import { timeToMinutes, formatMinutesToTime, getConflictReservationIds, doSpacesConflict, isReservationActiveForAvailability } from '../utils/conflictDetector';
 import { getChileanHolidayInfo } from '../utils/holidayUtils';
 import {
   Calendar as CalendarIcon,
@@ -562,8 +562,8 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
     // Detect conflicting reservations in this space and time (excluding current reservation being dragged)
     const conflictingRes = rawDayReservations.find((r) => {
       if (r.id === draggedReservation.id) return false;
-      if (r.estado === 'cancelada' || r.estado === 'rechazada' || r.estado === 'eliminada') return false;
-      if (normalizeSpaceName(r.espacio) !== normTargetSpace) return false;
+      if (!isReservationActiveForAvailability(r)) return false;
+      if (!doSpacesConflict(r.espacio, spaceName)) return false;
       const rStart = timeToMinutes(r.horaInicio);
       let rEnd = timeToMinutes(r.horaFin);
       if ((r.horaFin === '00:00' || r.horaFin === '24:00' || rEnd === 0) && rStart > 0 && !r.terminaDiaSiguiente) {
@@ -758,7 +758,7 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
     };
 
     const spaceBookings = dayReservations
-      .filter((r) => normalizeSpaceName(r.espacio) === normalizeSpaceName(space.name))
+      .filter((r) => doSpacesConflict(r.espacio, space.name))
       .sort((a, b) => {
         const intA = getBookingInterval(a);
         const intB = getBookingInterval(b);
@@ -1667,6 +1667,14 @@ export const DailyUsageView: React.FC<DailyUsageViewProps> = ({
                                   )}
                                   {res.importante === 'Sí' && (
                                     <Flame className="w-2.5 h-2.5 text-amber-600 shrink-0 ml-0.5" />
+                                  )}
+                                  {normalizeSpaceName(res.espacio) !== normalizeSpaceName(space.name) && (
+                                    <span
+                                      title={`Reserva compartida en múltiples espacios: ${res.espacio}`}
+                                      className="text-[7.5px] bg-indigo-600/90 text-white px-1 py-0.2 rounded font-bold uppercase tracking-tight shrink-0 truncate max-w-[80px]"
+                                    >
+                                      {res.espacio}
+                                    </span>
                                   )}
                                 </div>
                                 

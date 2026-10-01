@@ -318,7 +318,8 @@ export default function App() {
     resetFilters,
     conflicts,
     conflictReservationIds,
-    filteredReservations
+    filteredReservations,
+    activeReservations
   } = useFilteredReservations(reservations);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
 
@@ -536,7 +537,8 @@ export default function App() {
     handleSyncAllToFirebase,
     handleImportReservations,
     handleDeleteAllHolidays,
-    handleDuplicateReservation
+    handleDuplicateReservation,
+    handleMergeReservations
   } = useReservationCrud({
     reservations,
     setReservations,
@@ -1302,7 +1304,7 @@ export default function App() {
             editingReservation={editingReservation}
             isDuplicating={isDuplicating}
             onDuplicateReservation={handleDuplicateReservation}
-            allReservations={reservations}
+            allReservations={activeReservations}
             availableSpaces={spaces}
             availableLoanTypes={loanTypes}
             availableActivityTypes={activityTypes}
@@ -1327,7 +1329,8 @@ export default function App() {
           <ReservationDetailModal
             isOpen={isDetailModalOpen}
             reservation={selectedReservation}
-            allReservations={reservations}
+            allReservations={activeReservations}
+            onMergeReservations={handleMergeReservations}
             currentUser={currentUser}
             existingRating={
               selectedReservation
