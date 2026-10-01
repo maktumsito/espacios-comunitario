@@ -1,4 +1,5 @@
 import { GmailConnection } from './server/gmailConnection';
+import { registerScheduledCheck, singleFlight } from './server/scheduledDispatch';
 import { selectDispatchReservations, isDispatchLoan as isLoan, isDispatchableReservation } from './src/utils/activityDispatchSelection';
 import express from 'express';
 import path from 'path';
@@ -478,8 +479,9 @@ async function fetchAllRatingsServer(): Promise<SpaceRating[]> {
 }
 
 // Background Automated Scheduler for Daily Printable Activities Sheets
-export async function executeScheduledDispatchServer(force = false): Promise<{
+async function executeScheduledDispatchInternal(force = false): Promise<{
   success: boolean;
+  skipped?: boolean;
   message: string;
   activityDates?: string[];
   attachments?: string[];
@@ -499,11 +501,11 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
     const schedule = config?.schedule;
 
     if (!schedule) {
-      return { success: false, message: 'No hay programación configurada en el sistema.' };
+      return { success: false, skipped: true, message: 'No hay programación configurada en el sistema.' };
     }
 
     if (!schedule.enabled && !force) {
-      return { success: false, message: 'El envío automático programado está deshabilitado.' };
+      return { success: false, skipped: true, message: 'El envío automático programado está deshabilitado.' };
     }
 
     const santiago = getSantiagoTime();
@@ -511,27 +513,30 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
     if (!force) {
       // 1. Date Range Check (fechaInicio <= today <= fechaFin)
       if (schedule.fechaInicio && santiago.dateStr < schedule.fechaInicio) {
-        return { success: false, message: `Aún no inicia el período de programación (${schedule.fechaInicio}).` };
+        return { success: false, skipped: true, message: `Aún no inicia el período de programación (${schedule.fechaInicio}).` };
       }
       if (schedule.fechaFin && santiago.dateStr > schedule.fechaFin) {
-        return { success: false, message: `El ciclo de programación ya finalizó el ${schedule.fechaFin}.` };
+        return { success: false, skipped: true, message: `El ciclo de programación ya finalizó el ${schedule.fechaFin}.` };
       }
 
       // 2. Day of Week Check (0=Dom, 1=Lun, ..., 6=Sab)
       const targetDays: number[] = Array.isArray(schedule.diasSemana) ? schedule.diasSemana : [5];
       if (!targetDays.includes(santiago.dayOfWeek)) {
-        return { success: false, message: `Hoy (día ${santiago.dayOfWeek}) no está configurado para envíos.` };
+        return { success: false, skipped: true, message: `Hoy (día ${santiago.dayOfWeek}) no está configurado para envíos.` };
       }
 
       // 3. Time Check (HH:mm)
       const targetTime = schedule.horaEnvio || '08:30';
       if (santiago.timeFormatted < targetTime) {
-        return { success: false, message: `Aún no es la hora de despacho (${targetTime} hrs, actual: ${santiago.timeFormatted}).` };
+        return { success: false, skipped: true, message: `Aún no es la hora de despacho (${targetTime} hrs, actual: ${santiago.timeFormatted}).` };
       }
 
       // 4. Duplicate Check for Today (prevent multiple dispatches on the same date)
-      if (schedule.ultimoEnvio && schedule.ultimoEnvio.startsWith(santiago.dateStr)) {
-        return { success: false, message: `El despacho de hoy (${santiago.dateStr}) ya fue ejecutado previamente.` };
+      const lastDispatchDate = schedule.ultimaFechaDespacho || (schedule.ultimoEnvio
+        ? new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(schedule.ultimoEnvio))
+        : null);
+      if (lastDispatchDate === santiago.dateStr) {
+        return { success: false, skipped: true, message: `El despacho de hoy (${santiago.dateStr}) ya fue ejecutado previamente.` };
       }
     }
 
@@ -541,7 +546,7 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
     let activityDates = calculateActivityDatesForDispatchDate(santiago.dateStr, alcance, specificDays);
 
     if (activityDates.length === 0) {
-      return { success: false, message: 'No hay fechas de actividades calculadas para despachar en este ciclo.' };
+      return { success: false, skipped: true, message: 'No hay fechas de actividades calculadas para despachar en este ciclo.' };
     }
 
     // 6. Fetch reservations from Firestore and filter according to configured dispatchFilterMode
@@ -555,7 +560,7 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
     });
     activityDates = activityDates.filter(date => emailReservations.some(r => r.fecha === date));
     if (activityDates.length === 0) {
-      return { success: false, message: 'No hay actividades seleccionadas de la semana en curso para enviar.' };
+      return { success: false, skipped: true, message: 'No hay actividades seleccionadas de la semana en curso para enviar.' };
     }
 
     // 7. Generate ONE printable PDF sheet for EACH day to be dispatched
@@ -646,7 +651,8 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
       // Record last dispatch timestamp
       const updatedSchedule = {
         ...schedule,
-        ultimoEnvio: nowIso
+        ultimoEnvio: nowIso,
+        ultimaFechaDespacho: santiago.dateStr
       };
       const updatedConfigData = {
         ...(config || {}),
@@ -713,6 +719,11 @@ export async function executeScheduledDispatchServer(force = false): Promise<{
       error: err?.message || String(err)
     };
   }
+}
+
+const checkScheduledDispatch = singleFlight(() => executeScheduledDispatchInternal(false));
+export function executeScheduledDispatchServer(force = false) {
+  return force ? executeScheduledDispatchInternal(true) : checkScheduledDispatch();
 }
 
 let schedulerInterval: NodeJS.Timeout | null = null;
@@ -971,6 +982,8 @@ async function startServer() {
   });
 
   // Trigger scheduled automated dispatch manually / on-demand
+  registerScheduledCheck(app, () => process.env.EMAIL_SCHEDULER_SECRET, executeScheduledDispatchServer);
+
   app.post('/api/email/trigger-scheduled', requireAuth, async (req, res) => {
     try {
       const force = req.body?.force !== false;
