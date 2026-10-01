@@ -36,5 +36,19 @@ antes de crear una. El cupo gratuito del programador no garantiza que todo el
 consumo de Cloud Run, Firestore u otros servicios de la cuenta sea gratuito.
 Fuente: https://cloud.google.com/scheduler/pricing
 
-Estado: la ruta puede desplegarse, pero queda cerrada hasta configurar su secreto.
-Crear y comprobar la tarea externa antes de dar por activada la automatización.
+Estado verificado el 1 de octubre de 2026:
+
+- Ruta publicada y secreto configurado en el servidor.
+- Tarea `planillas-actividades` habilitada en `gen-lang-client-0391852968`,
+  región `us-east1`, zona `America/Santiago`, cada cinco minutos.
+- Google Cloud mostró la primera ejecución como **Sin errores**.
+- Comprobación sin clave: HTTP 401. Con clave: HTTP 200, omitido porque el jueves
+  no figura en los días de envío guardados. No se forzó ningún correo de prueba.
+- Programación guardada: viernes 08:30, actividades de sábado y domingo.
+- OAuth de Gmail en producción; autorización renovada después de publicar.
+- El proyecto no tenía tareas de Scheduler. En los otros tres proyectos de la
+  misma cuenta la API de Scheduler estaba deshabilitada. No se habilitó ningún
+  servicio en esos proyectos ni se contrataron funciones adicionales.
+
+La ruta queda cerrada si se elimina el secreto. No publicar su valor en Git,
+capturas, documentación o registros.
