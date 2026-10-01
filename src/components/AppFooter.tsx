@@ -72,6 +72,7 @@ export const AppFooter: React.FC<AppFooterProps> = ({
 
         {/* Right / Secondary: Cache details, count, and manual sync trigger */}
         <div className="flex items-center justify-center sm:justify-end gap-3 text-slate-500">
+          <a href="/privacidad.html" className="hover:text-blue-700 underline underline-offset-2">Privacidad</a>
           <div className="flex items-center space-x-1.5" title="Reservas en caché local e IndexedDB">
             <Database className="w-3.5 h-3.5 text-slate-400" />
             <span>

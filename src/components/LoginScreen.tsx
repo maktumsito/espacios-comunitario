@@ -351,6 +351,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         {/* Footer info */}
         <div className="mt-6 text-center text-xs text-slate-400">
           <p>© {new Date().getFullYear()} Sistema Comunitario de Gestión de Espacios</p>
+          <a href="/privacidad.html" className="underline underline-offset-2">Política de privacidad</a>
         </div>
       </div>
     </div>
