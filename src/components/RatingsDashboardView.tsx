@@ -73,12 +73,21 @@ export const RatingsDashboardView: React.FC<RatingsDashboardViewProps> = ({
     return new Set(ratings.map(r => r.reservationId));
   }, [ratings]);
 
+  const todayStr = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+  const [pendingTab, setPendingTab] = useState<'ready' | 'upcoming'>('ready');
+
   // Pending Birthday loans that haven't been rated yet
-  const pendingBirthdayReservations = useMemo(() => {
-    return birthdayReservations
+  const { readyToRateReservations, upcomingReservations, pendingBirthdayReservations } = useMemo(() => {
+    const unrated = birthdayReservations
       .filter(r => !ratedReservationIds.has(r.id))
       .sort((a, b) => b.fecha.localeCompare(a.fecha));
-  }, [birthdayReservations, ratedReservationIds]);
+
+    return {
+      pendingBirthdayReservations: unrated,
+      readyToRateReservations: unrated.filter(r => r.fecha <= todayStr),
+      upcomingReservations: unrated.filter(r => r.fecha > todayStr)
+    };
+  }, [birthdayReservations, ratedReservationIds, todayStr]);
 
   // Filtered ratings list (strictly Birthday loans ratings from 1 week ago onwards)
   const filteredRatings = useMemo(() => {
@@ -210,24 +219,60 @@ export const RatingsDashboardView: React.FC<RatingsDashboardViewProps> = ({
       {/* Main Grid: Pending Birthday Loans on Left, Completed Ratings on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Préstamos de Cumpleaños Pendientes de Calificar */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-800 flex items-center space-x-2">
               <Cake className="w-4 h-4 text-amber-600" />
-              <span>Cumpleaños por Calificar ({pendingBirthdayReservations.length})</span>
+              <span>Cumpleaños por Calificar</span>
             </h3>
           </div>
 
+          {/* Sub-tabs for Pending: Listas vs Por Realizar */}
+          <div className="flex bg-slate-100 p-1 rounded-xl gap-1 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setPendingTab('ready')}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition cursor-pointer flex items-center justify-center space-x-1.5 ${
+                pendingTab === 'ready'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>Listas</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                pendingTab === 'ready' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {readyToRateReservations.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingTab('upcoming')}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition cursor-pointer flex items-center justify-center space-x-1.5 ${
+                pendingTab === 'upcoming'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>Por realizar</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                pendingTab === 'upcoming' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {upcomingReservations.length}
+              </span>
+            </button>
+          </div>
+
           <div className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
-            {pendingBirthdayReservations.length === 0 ? (
-              <div className="p-6 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 text-xs">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
-                <p className="font-semibold text-slate-700">¡Al día con los Cumpleaños!</p>
-                <p>No hay préstamos de cumpleaños pendientes por calificar del fin de semana actual ni de la última semana.</p>
-              </div>
-            ) : (
-              pendingBirthdayReservations.map((res) => {
-                return (
+            {pendingTab === 'ready' ? (
+              readyToRateReservations.length === 0 ? (
+                <div className="p-6 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 text-xs">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
+                  <p className="font-semibold text-slate-700">¡Al día con los Cumpleaños!</p>
+                  <p>No hay préstamos de cumpleaños pasados pendientes de calificación.</p>
+                </div>
+              ) : (
+                readyToRateReservations.map((res) => (
                   <div
                     key={res.id}
                     className="p-4 bg-white border border-amber-200 rounded-2xl shadow-2xs hover:shadow-md transition space-y-2.5 dynamic-hover-card"
@@ -294,8 +339,56 @@ export const RatingsDashboardView: React.FC<RatingsDashboardViewProps> = ({
                       <span>Calificar Cumpleaños</span>
                     </button>
                   </div>
-                );
-              })
+                ))
+              )
+            ) : (
+              upcomingReservations.length === 0 ? (
+                <div className="p-6 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 text-xs">
+                  <Clock className="w-8 h-8 text-blue-500 mx-auto mb-2 opacity-80" />
+                  <p className="font-semibold text-slate-700">Sin cumpleaños futuros</p>
+                  <p>No hay préstamos de cumpleaños programados para los próximos días del ciclo.</p>
+                </div>
+              ) : (
+                upcomingReservations.map((res) => (
+                  <div
+                    key={res.id}
+                    className="p-4 bg-white border border-blue-200 rounded-2xl shadow-2xs space-y-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-[10px] bg-blue-100 text-blue-900 font-bold px-2 py-0.5 rounded-md border border-blue-300 flex items-center space-x-1">
+                            <Clock className="w-3 h-3 text-blue-700" />
+                            <span>Por Realizar</span>
+                          </span>
+                          <span className="text-xs font-bold text-slate-900 truncate block">
+                            {res.descripcion || res.tipoActividad}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-blue-600 font-semibold flex items-center space-x-1">
+                          <Building2 className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{res.espacio}</span>
+                        </span>
+                      </div>
+
+                      <span className="text-[10px] font-mono font-bold bg-blue-50 text-blue-800 border border-blue-200 px-2 py-1 rounded-lg shrink-0">
+                        {formatDateDDMMYYYY(res.fecha)}
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] text-slate-600 space-y-0.5 pt-1 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-slate-700">Solicitante: {res.responsable}</span>
+                        <span className="font-mono text-slate-500">{res.horaInicio} - {res.horaFin}</span>
+                      </div>
+                    </div>
+
+                    <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-[10px] text-slate-500 text-center font-medium">
+                      🔒 La calificación se habilitará cuando concluya el evento
+                    </div>
+                  </div>
+                ))
+              )
             )}
           </div>
         </div>

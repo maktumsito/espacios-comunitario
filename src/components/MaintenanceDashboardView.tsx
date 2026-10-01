@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { SpaceBlock } from '../types';
+import React, { useState, useMemo } from 'react';
+import { SpaceBlock, SpaceInfo } from '../types';
+import { SPACES_LIST } from '../data/spacesData';
 import { formatDateDDMMYYYY } from '../utils/dateUtils';
 import {
   Hammer,
@@ -11,7 +12,11 @@ import {
   AlertTriangle,
   Search,
   Wrench,
-  Repeat
+  Repeat,
+  ChevronDown,
+  ChevronUp,
+  ShieldAlert,
+  Building2
 } from 'lucide-react';
 import { SpaceBlockModal } from './SpaceBlockModal';
 
@@ -19,25 +24,36 @@ interface MaintenanceDashboardViewProps {
   blocks: SpaceBlock[];
   onSaveBlock: (block: SpaceBlock) => Promise<void>;
   onDeleteBlock: (id: string) => Promise<void>;
+  availableSpaces?: SpaceInfo[];
 }
 
 export const MaintenanceDashboardView: React.FC<MaintenanceDashboardViewProps> = ({
   blocks,
   onSaveBlock,
-  onDeleteBlock
+  onDeleteBlock,
+  availableSpaces
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMotivo, setFilterMotivo] = useState('all');
+  const [filterSpace, setFilterSpace] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBlock, setEditingBlock] = useState<SpaceBlock | null>(null);
   const [blockToDelete, setBlockToDelete] = useState<SpaceBlock | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
+  const [isPurgingPast, setIsPurgingPast] = useState(false);
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
 
   const todayStr = new Date().toISOString().split('T')[0];
+
+  const spacesList = useMemo(() => {
+    return availableSpaces && availableSpaces.length > 0 ? availableSpaces : SPACES_LIST;
+  }, [availableSpaces]);
 
   // Filter and sort blocks
   const filteredBlocks = blocks.filter((b) => {
     if (filterMotivo !== 'all' && b.motivo !== filterMotivo) return false;
+    if (filterSpace !== 'all' && b.espacio !== filterSpace) return false;
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       const matchSpace = b.espacio.toLowerCase().includes(q);
@@ -57,6 +73,7 @@ export const MaintenanceDashboardView: React.FC<MaintenanceDashboardViewProps> =
 
   const activeCount = blocks.filter((b) => b.activo && todayStr >= b.fechaInicio && todayStr <= b.fechaFin).length;
   const scheduledCount = blocks.filter((b) => b.activo && b.fechaInicio > todayStr).length;
+  const pastBlocks = useMemo(() => blocks.filter((b) => b.fechaFin < todayStr), [blocks, todayStr]);
 
   const handleOpenNew = () => {
     setEditingBlock(null);
@@ -149,22 +166,40 @@ export const MaintenanceDashboardView: React.FC<MaintenanceDashboardViewProps> =
           />
         </div>
 
-        <div className="flex items-center space-x-2 w-full sm:w-auto">
-          <span className="text-xs font-semibold text-slate-500 shrink-0">Motivo:</span>
-          <select
-            value={filterMotivo}
-            onChange={(e) => setFilterMotivo(e.target.value)}
-            className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
-          >
-            <option value="all">Todos los motivos</option>
-            <option value="Mantención">Mantención General</option>
-            <option value="Pintura">Pintura</option>
-            <option value="Reparaciones">Reparaciones</option>
-            <option value="Aseo Profundo">Aseo Profundo</option>
-            <option value="Obras">Obras Mayores</option>
-            <option value="Evento Institucional">Evento Institucional</option>
-            <option value="Otro">Otro</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center space-x-1.5">
+            <span className="text-xs font-semibold text-slate-500 shrink-0">Espacio:</span>
+            <select
+              value={filterSpace}
+              onChange={(e) => setFilterSpace(e.target.value)}
+              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
+            >
+              <option value="all">Todos los espacios</option>
+              {spacesList.map((sp) => (
+                <option key={sp.id} value={sp.name}>
+                  {sp.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center space-x-1.5">
+            <span className="text-xs font-semibold text-slate-500 shrink-0">Motivo:</span>
+            <select
+              value={filterMotivo}
+              onChange={(e) => setFilterMotivo(e.target.value)}
+              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
+            >
+              <option value="all">Todos los motivos</option>
+              <option value="Mantención">Mantención General</option>
+              <option value="Pintura">Pintura</option>
+              <option value="Reparaciones">Reparaciones</option>
+              <option value="Aseo Profundo">Aseo Profundo</option>
+              <option value="Obras">Obras Mayores</option>
+              <option value="Evento Institucional">Evento Institucional</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -292,6 +327,55 @@ export const MaintenanceDashboardView: React.FC<MaintenanceDashboardViewProps> =
         </div>
       )}
 
+      {/* Collapsible Safe Maintenance Management & Purge Zone */}
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+        <button
+          type="button"
+          onClick={() => setIsDangerZoneOpen(!isDangerZoneOpen)}
+          className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-50 transition cursor-pointer"
+        >
+          <div className="flex items-center space-x-2.5">
+            <ShieldAlert className="w-4 h-4 text-amber-600" />
+            <div>
+              <h4 className="text-xs font-bold text-slate-800">
+                Gestión Avanzada y Depuración de Bloqueos
+              </h4>
+              <p className="text-[11px] text-slate-500">
+                Limpieza segura de registros históricos y mantenciones concluidas
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 text-slate-400">
+            <span className="text-[11px] font-semibold text-slate-500">
+              {pastBlocks.length} concluidos
+            </span>
+            {isDangerZoneOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </div>
+        </button>
+
+        {isDangerZoneOpen && (
+          <div className="p-4 pt-2 border-t border-slate-100 bg-slate-50/50 space-y-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 bg-white border border-slate-200 rounded-xl">
+              <div>
+                <p className="text-xs font-bold text-slate-800">Depurar bloqueos concluidos anteriores a hoy</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Elimina en lote los registros de mantención pasados para optimizar el historial. Requiere confirmación secundaria explícita.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={pastBlocks.length === 0 || isPurgingPast}
+                onClick={() => setShowPurgeModal(true)}
+                className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0 flex items-center space-x-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Depurar {pastBlocks.length} Bloqueos Antiguos</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Create / Edit Modal */}
       {isModalOpen && (
         <SpaceBlockModal
@@ -302,10 +386,11 @@ export const MaintenanceDashboardView: React.FC<MaintenanceDashboardViewProps> =
           }}
           onSave={onSaveBlock}
           editingBlock={editingBlock}
+          availableSpaces={spacesList}
         />
       )}
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Single Confirmation Dialog */}
       {blockToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl p-5 max-w-sm w-full border border-slate-200 shadow-2xl space-y-4">
@@ -331,6 +416,50 @@ export const MaintenanceDashboardView: React.FC<MaintenanceDashboardViewProps> =
                 className="px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition cursor-pointer"
               >
                 {isDeleting ? 'Eliminando...' : 'Sí, Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Purge Secondary Confirmation Dialog */}
+      {showPurgeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-5 max-w-sm w-full border border-rose-200 shadow-2xl space-y-4">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <AlertTriangle className="w-6 h-6 shrink-0" />
+              <h3 className="font-bold text-base text-slate-900">¿Confirmar depuración de {pastBlocks.length} registros?</h3>
+            </div>
+            <p className="text-xs text-slate-600">
+              Esta acción eliminará de forma irreversible los registros históricos concluidos anteriores a la fecha actual ({formatDateDDMMYYYY(todayStr)}).
+            </p>
+            <div className="flex items-center justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowPurgeModal(false)}
+                className="px-3 py-1.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isPurgingPast}
+                onClick={async () => {
+                  setIsPurgingPast(true);
+                  try {
+                    for (const block of pastBlocks) {
+                      await onDeleteBlock(block.id);
+                    }
+                    setShowPurgeModal(false);
+                  } catch (err) {
+                    console.error(err);
+                  } finally {
+                    setIsPurgingPast(false);
+                  }
+                }}
+                className="px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition cursor-pointer"
+              >
+                {isPurgingPast ? 'Depurando...' : 'Sí, Depurar Historial'}
               </button>
             </div>
           </div>

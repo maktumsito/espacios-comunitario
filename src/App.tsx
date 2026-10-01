@@ -1387,7 +1387,15 @@ export default function App() {
                 triggerSyncToast('Permiso denegado: No tienes autorización para modificar reservas (gestión controlada por Cristian Shute).', 'error');
                 return;
               }
-              requireAuth(() => handleQuickToggleRealizada(reserva), 'actualizar asistencia de reserva');
+              requireAuth(() => {
+                handleQuickToggleRealizada(reserva);
+                if (selectedReservation && selectedReservation.id === reserva.id) {
+                  setSelectedReservation({
+                    ...selectedReservation,
+                    realizada: selectedReservation.realizada === 'Sí' ? 'No' : 'Sí'
+                  });
+                }
+              }, 'actualizar asistencia de reserva');
             }}
             onOpenGmailDispatch={(date, filterMode, resId) => {
               openGmailDispatchModal(date, filterMode, resId);

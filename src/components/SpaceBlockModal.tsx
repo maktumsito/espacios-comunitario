@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { SpaceBlock } from '../types';
+import { SpaceBlock, SpaceInfo } from '../types';
 import { SPACES_LIST } from '../data/spacesData';
 import { X, AlertTriangle, Check, Hammer, Repeat } from 'lucide-react';
 import { format, parseISO, addMonths, addDays, getDay, isAfter } from 'date-fns';
@@ -22,6 +22,7 @@ interface SpaceBlockModalProps {
   editingBlock?: SpaceBlock | null;
   defaultSpace?: string;
   defaultDate?: string;
+  availableSpaces?: SpaceInfo[];
 }
 
 export const SpaceBlockModal: React.FC<SpaceBlockModalProps> = ({
@@ -30,10 +31,15 @@ export const SpaceBlockModal: React.FC<SpaceBlockModalProps> = ({
   onSave,
   editingBlock,
   defaultSpace,
-  defaultDate
+  defaultDate,
+  availableSpaces
 }) => {
+  const spacesList = useMemo(() => {
+    return availableSpaces && availableSpaces.length > 0 ? availableSpaces : SPACES_LIST;
+  }, [availableSpaces]);
+
   const [espacio, setEspacio] = useState<string>(
-    editingBlock?.espacio || defaultSpace || SPACES_LIST[0]?.name || 'AUDITORIO'
+    editingBlock?.espacio || defaultSpace || spacesList[0]?.name || 'AUDITORIO'
   );
   const [fechaInicio, setFechaInicio] = useState<string>(
     editingBlock?.fechaInicio || defaultDate || new Date().toISOString().split('T')[0]
@@ -251,7 +257,7 @@ export const SpaceBlockModal: React.FC<SpaceBlockModalProps> = ({
               onChange={(e) => setEspacio(e.target.value)}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
             >
-              {SPACES_LIST.map((sp) => (
+              {spacesList.map((sp: SpaceInfo) => (
                 <option key={sp.id} value={sp.name}>
                   {sp.name}
                 </option>

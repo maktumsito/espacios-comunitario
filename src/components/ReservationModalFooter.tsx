@@ -26,12 +26,14 @@ interface ReservationModalFooterProps {
   setDescargarCartaAlCrear?: (val: boolean) => void;
   setShowCommitmentLetterModal: (show: boolean) => void;
   isWizardMode: boolean;
-  wizardStep: 1 | 2 | 3;
-  setWizardStep: React.Dispatch<React.SetStateAction<1 | 2 | 3>>;
+  wizardStep: 1 | 2 | 3 | 4 | 5;
+  setWizardStep: React.Dispatch<React.SetStateAction<1 | 2 | 3 | 4 | 5>>;
   scrollToModalTop: () => void;
   onClose: () => void;
   validateStep1: (showFeedback: boolean) => boolean;
   validateStep2: (showFeedback: boolean) => boolean;
+  validateStep3?: (showFeedback: boolean) => boolean;
+  validateStep4?: (showFeedback: boolean) => boolean;
   isFormSubmitDisabled: boolean;
   isEditingExisting: boolean;
   conflicts: Reservation[];
@@ -47,6 +49,8 @@ interface ReservationModalFooterProps {
   generatedDates: readonly string[] | string[];
   isStep1Completed?: boolean;
   isStep2Completed?: boolean;
+  isStep3Completed?: boolean;
+  isStep4Completed?: boolean;
 }
 
 export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = React.memo(({
@@ -83,7 +87,11 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
   specificDates,
   generatedDates,
   isStep1Completed,
-  isStep2Completed
+  isStep2Completed,
+  isStep3Completed = true,
+  isStep4Completed = true,
+  validateStep3,
+  validateStep4
 }) => {
   return (
     <div className="flex items-center justify-between pt-4 border-t border-slate-200">
@@ -192,7 +200,7 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
             type="button"
             id="btn-wizard-prev"
             onClick={() => {
-              setWizardStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2) : 1));
+              setWizardStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3 | 4) : 1));
               scrollToModalTop();
             }}
             className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold shadow-xs transition flex items-center space-x-1 cursor-pointer"
@@ -212,35 +220,67 @@ export const ReservationModalFooter: React.FC<ReservationModalFooterProps> = Rea
           Cancelar
         </button>
 
-        {isWizardMode && wizardStep < 3 ? (
+        {isWizardMode && wizardStep < 5 ? (
           <button
             id="btn-wizard-next"
             type="button"
-            disabled={wizardStep === 1 ? (!isStep1Completed || !timeValidation.isValid) : !isStep2Completed}
+            disabled={
+              wizardStep === 1
+                ? !isStep1Completed
+                : wizardStep === 2
+                ? (!isStep2Completed || !timeValidation.isValid)
+                : wizardStep === 3
+                ? !isStep3Completed
+                : wizardStep === 4
+                ? !isStep4Completed
+                : false
+            }
             onClick={() => {
               if (wizardStep === 1) {
+                if (validateStep1 && !validateStep1(true)) return;
+                setWizardStep(2);
+                scrollToModalTop();
+              } else if (wizardStep === 2) {
                 if (!timeValidation.isValid) {
-                  validateStep1(true);
+                  validateStep2 && validateStep2(true);
                   return;
                 }
-                if (validateStep1(true)) {
-                  setWizardStep(2);
-                  scrollToModalTop();
-                }
-              } else if (wizardStep === 2) {
-                if (validateStep2(true)) {
-                  setWizardStep(3);
-                  scrollToModalTop();
-                }
+                if (validateStep2 && !validateStep2(true)) return;
+                setWizardStep(3);
+                scrollToModalTop();
+              } else if (wizardStep === 3) {
+                if (validateStep3 && !validateStep3(true)) return;
+                setWizardStep(4);
+                scrollToModalTop();
+              } else if (wizardStep === 4) {
+                if (validateStep4 && !validateStep4(true)) return;
+                setWizardStep(5);
+                scrollToModalTop();
               }
             }}
             className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold shadow-xs transition flex items-center space-x-1.5 ${
-              (wizardStep === 1 ? (!isStep1Completed || !timeValidation.isValid) : !isStep2Completed)
+              (wizardStep === 1
+                ? !isStep1Completed
+                : wizardStep === 2
+                ? (!isStep2Completed || !timeValidation.isValid)
+                : wizardStep === 3
+                ? !isStep3Completed
+                : wizardStep === 4
+                ? !isStep4Completed
+                : false)
                 ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
                 : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
             }`}
           >
-            <span>{wizardStep === 1 ? 'Siguiente: Solicitante' : 'Siguiente: Detalles'}</span>
+            <span>
+              {wizardStep === 1
+                ? 'Siguiente: Espacio y Horario'
+                : wizardStep === 2
+                ? 'Siguiente: Solicitante'
+                : wizardStep === 3
+                ? 'Siguiente: Recursos'
+                : 'Siguiente: Resumen y Confirmación'}
+            </span>
             <ChevronRight className="w-4 h-4" />
           </button>
         ) : (

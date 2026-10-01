@@ -168,9 +168,10 @@ export const CommitmentLetterModal: React.FC<CommitmentLetterModalProps> = ({
     try {
       setPdfError(null);
       setIsGeneratingPdf(true);
+      const isConfirmed = Boolean(reservationData.id && reservationData.estado === 'activa');
       await downloadCommitmentLetterPdf(
         { ...reservationData, ...localData },
-        { seriesScheduleItems: scheduleSlots, allReservations }
+        { seriesScheduleItems: scheduleSlots, allReservations, isDraft: !isConfirmed }
       );
     } catch (err) {
       console.error('Error generating PDF:', err);
@@ -273,8 +274,12 @@ RUT: ${rutStr || '____________________________________'}
             <div>
               <h2 className="text-base font-bold flex items-center space-x-2">
                 <span>Carta de Compromiso y Condiciones de Uso</span>
-                <span className="text-[10px] uppercase tracking-wider bg-slate-800 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-full font-semibold">
-                  Versión Oficial
+                <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold border ${
+                  Boolean(reservationData.id && reservationData.estado === 'activa')
+                    ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                    : 'bg-amber-950 text-amber-300 border-amber-800'
+                }`}>
+                  {Boolean(reservationData.id && reservationData.estado === 'activa') ? 'Versión Oficial' : 'Borrador / Previsualización'}
                 </span>
                 {isMultiSlot && (
                   <span className="text-[10px] uppercase tracking-wider bg-blue-500/30 text-blue-200 border border-blue-400/30 px-2 py-0.5 rounded-full font-bold flex items-center space-x-1">
@@ -788,10 +793,12 @@ RUT: ${rutStr || '____________________________________'}
               <div className="pt-1">
                 <h3 className="font-bold text-slate-950 text-xs uppercase tracking-wide flex items-center space-x-2">
                   <Calendar className="w-4 h-4 text-blue-600" />
-                  <span>ANEXO: CALENDARIO DETALLADO DE SESIONES ({rangeInfo.totalSessions} SESIONES AUTORIZADAS)</span>
+                  <span>
+                    ANEXO: CALENDARIO DETALLADO DE SESIONES ({rangeInfo.totalSessions} SESIONES {Boolean(reservationData.id && reservationData.estado === 'activa') ? 'AUTORIZADAS' : 'PROGRAMADAS (BORRADOR)'})
+                  </span>
                 </h3>
                 <p className="text-slate-600 text-[11px]">
-                  Folio: {folioNumber} | Solicitante: {localData.responsable || 'Marleny Perez'}
+                  Folio: {folioNumber} | Solicitante: {(localData.responsable || '__________________________________________').toUpperCase()}
                 </p>
               </div>
 
@@ -802,7 +809,7 @@ RUT: ${rutStr || '____________________________________'}
                       <th className="py-2 px-3 text-center w-10">N°</th>
                       <th className="py-2 px-3">Fecha y Día</th>
                       <th className="py-2 px-3">Espacio Asignado</th>
-                      <th className="py-2 px-3 text-center">Horario Autorizado</th>
+                      <th className="py-2 px-3 text-center">Horario {Boolean(reservationData.id && reservationData.estado === 'activa') ? 'Autorizado' : 'Solicitado'}</th>
                       <th className="py-2 px-3 text-center">Estado</th>
                     </tr>
                   </thead>
@@ -810,11 +817,13 @@ RUT: ${rutStr || '____________________________________'}
                     {rangeInfo.slots.map((slot, index) => {
                       let formattedDay = '';
                       try {
-                        formattedDay = format(parseISO(slot.fecha), "EEEE d 'de' MMMM, yyyy", { locale: es });
+                         formattedDay = format(parseISO(slot.fecha), "EEEE d 'de' MMMM, yyyy", { locale: es });
                         formattedDay = formattedDay.charAt(0).toUpperCase() + formattedDay.slice(1);
                       } catch {
                         formattedDay = formatDateDDMMYYYY(slot.fecha);
                       }
+
+                      const isConfirmed = Boolean(reservationData.id && reservationData.estado === 'activa');
 
                       return (
                         <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
@@ -828,8 +837,10 @@ RUT: ${rutStr || '____________________________________'}
                           <td className="py-2 px-3 text-center font-mono font-bold text-slate-800">
                             {slot.horaInicio} a {slot.horaFin} hrs.
                           </td>
-                          <td className="py-2 px-3 text-center text-emerald-700 font-semibold text-[11px]">
-                            Autorizado
+                          <td className={`py-2 px-3 text-center font-semibold text-[11px] ${
+                            isConfirmed ? 'text-emerald-700' : 'text-amber-700'
+                          }`}>
+                            {isConfirmed ? 'Autorizado' : 'Borrador'}
                           </td>
                         </tr>
                       );

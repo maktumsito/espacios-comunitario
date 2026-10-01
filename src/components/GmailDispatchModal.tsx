@@ -942,54 +942,88 @@ export const GmailDispatchModal: React.FC<GmailDispatchModalProps> = ({
                   </div>
                 </div>
 
-                {/* Mode Selector */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setDateMode('single')}
-                    className={`py-2 px-2 text-xs font-semibold rounded-xl border text-center transition cursor-pointer ${
-                      dateMode === 'single'
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    Día Específico
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDateMode('range')}
-                    className={`py-2 px-2 text-xs font-semibold rounded-xl border text-center transition cursor-pointer ${
-                      dateMode === 'range'
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    Rango de Fechas
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDateMode('multiple')}
-                    className={`py-2 px-2 text-xs font-semibold rounded-xl border text-center transition cursor-pointer ${
-                      dateMode === 'multiple'
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    Días Específicos ({multipleDates.length})
-                  </button>
-                  <button
-                    type="button"
-                    id="modal-btn-mode-weekday-duration"
-                    onClick={() => setDateMode('weekday_duration')}
-                    className={`py-2 px-2 text-xs font-semibold rounded-xl border text-center transition cursor-pointer flex items-center justify-center space-x-1 ${
-                      dateMode === 'weekday_duration'
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <Repeat className="w-3.5 h-3.5" />
-                    <span>Día y Duración</span>
-                  </button>
+                {/* Top-Level Mode Tabs: Envío Puntual vs Programación Periódica */}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 p-1 bg-slate-200/80 rounded-xl gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (dateMode === 'weekday_duration') {
+                          setDateMode('single');
+                        }
+                      }}
+                      className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                        dateMode !== 'weekday_duration'
+                          ? 'bg-white text-blue-700 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/50'
+                      }`}
+                    >
+                      <CalendarDays className="w-4 h-4 text-blue-600" />
+                      <span>Envío Puntual (Por Fechas)</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="modal-btn-mode-weekday-duration"
+                      onClick={() => setDateMode('weekday_duration')}
+                      className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                        dateMode === 'weekday_duration'
+                          ? 'bg-white text-indigo-700 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/50'
+                      }`}
+                    >
+                      <Repeat className="w-4 h-4 text-indigo-600" />
+                      <span>Programación Periódica (Recurrente)</span>
+                    </button>
+                  </div>
+
+                  {/* Context Banner & Sub-selector for Punctual Mode */}
+                  {dateMode !== 'weekday_duration' ? (
+                    <div className="space-y-3 pt-1">
+                      {/* Sub-modes for Punctual Dispatch */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDateMode('single')}
+                          className={`py-2 px-2 text-xs font-semibold rounded-xl border text-center transition cursor-pointer ${
+                            dateMode === 'single'
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          Día Específico
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDateMode('range')}
+                          className={`py-2 px-2 text-xs font-semibold rounded-xl border text-center transition cursor-pointer ${
+                            dateMode === 'range'
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          Rango de Fechas
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDateMode('multiple')}
+                          className={`py-2 px-2 text-xs font-semibold rounded-xl border text-center transition cursor-pointer ${
+                            dateMode === 'multiple'
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          Días Específicos ({multipleDates.length})
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-start gap-2.5">
+                      <Repeat className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold">Modo Programación Periódica:</span> Define el día de despacho, meses de cobertura y alcance de actividades para entregas automáticas periódicas.
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Date Inputs based on mode */}

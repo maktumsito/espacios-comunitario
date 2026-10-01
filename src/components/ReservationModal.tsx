@@ -74,6 +74,11 @@ import { ConflictRecommendationPanel } from './ConflictRecommendationPanel';
 import { ConflictResolutionModal, type ConflictSavePayload } from './ConflictResolutionModal';
 import { ConfirmationModal } from './common/ConfirmationModal';
 import { WizardStepsBar } from './WizardStepsBar';
+import { ReservationStep1Activity } from './ReservationStep1Activity';
+import { ReservationStep2DateTime } from './ReservationStep2DateTime';
+import { ReservationStep3Applicant } from './ReservationStep3Applicant';
+import { ReservationStep4ResourcesDocs } from './ReservationStep4ResourcesDocs';
+import { ReservationStep5Review } from './ReservationStep5Review';
 import { ReservationStep3Details } from './ReservationStep3Details';
 import { ReservationConflictBanner } from './ReservationConflictBanner';
 import { RecurringSeriesScopeSelector } from './RecurringSeriesScopeSelector';
@@ -242,9 +247,10 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
   const [recurrenceStartDate, setRecurrenceStartDate] = useState(initialDate || format(new Date(), 'yyyy-MM-dd'));
   const [recurrenceEndDate, setRecurrenceEndDate] = useState(format(addMonths(new Date(), 3), 'yyyy-MM-dd'));
 
-  // Progressive Wizard UX State (3 steps)
-  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  // Progressive Wizard UX State (5 steps)
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [isWizardMode, setIsWizardMode] = useState<boolean>(!editingReservation || isDuplicating);
+  const [isEditingLoading, setIsEditingLoading] = useState<boolean>(false);
 
   // Sync wizard step on open
   useEffect(() => {
@@ -565,6 +571,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     if (!isOpen) return;
 
     if (editingReservation) {
+      setIsEditingLoading(true);
       const isCopy = Boolean(isDuplicating);
       const isMultiSpace = isSingleDayMultiSpaceReservation(editingReservation);
       const clonedEquip = editingReservation.equipamientoSolicitado
@@ -725,6 +732,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
           }
         }
       }
+      setIsEditingLoading(false);
     } else {
       const defAct = effectiveActivityNames[0] || 'TALLER CCD';
       const defLoan = availableLoanTypes[0]?.name || 'TALLER FORMATIVO CCD';
@@ -977,7 +985,15 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     isStep2Completed,
     isStep3Completed,
     validateStep1,
-    validateStep2
+    validateStep2,
+    isStep1ActivityCompleted,
+    isStep2DateTimeCompleted,
+    isStep3ApplicantCompleted,
+    isStep4ResourcesCompleted,
+    validateStep1Activity,
+    validateStep2DateTime,
+    validateStep3Applicant,
+    validateStep4Resources
   } = useReservationModalValidation({
     formData,
     enableSingleSecondSpace,
@@ -1429,36 +1445,61 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
             />
           )}
 
-          {/* 3-Step Progressive Wizard Stepper */}
+          {/* 5-Step Progressive Wizard Stepper */}
           {isWizardMode && (
             <div className="space-y-2">
               <WizardStepsBar
                 wizardStep={wizardStep}
-                isStep1Completed={isStep1Completed}
-                isStep2Completed={isStep2Completed}
-                isStep3Completed={isStep3Completed}
+                isStep1Completed={isStep1ActivityCompleted}
+                isStep2Completed={isStep2DateTimeCompleted}
+                isStep3Completed={isStep3ApplicantCompleted}
+                isStep4Completed={isStep4ResourcesCompleted}
+                isStep5Completed={isStep1ActivityCompleted && isStep2DateTimeCompleted && isStep3ApplicantCompleted}
                 espacio={formData.espacio}
                 responsable={formData.responsable}
                 descripcion={formData.descripcion}
+                equipamientoCount={formData.equipamientoSolicitado?.length || 0}
                 onSelectStep={(targetStep) => {
                   if (targetStep === 1) {
                     setWizardStep(1);
                     scrollToModalTop();
                   } else if (targetStep === 2) {
-                    if (validateStep1(false)) {
+                    if (validateStep1Activity(false)) {
                       setWizardStep(2);
                       scrollToModalTop();
                     } else {
-                      validateStep1(true);
+                      validateStep1Activity(true);
                     }
                   } else if (targetStep === 3) {
-                    if (validateStep1(false) && validateStep2(false)) {
+                    if (validateStep1Activity(false) && validateStep2DateTime(false)) {
                       setWizardStep(3);
                       scrollToModalTop();
-                    } else if (!validateStep1(false)) {
-                      validateStep1(true);
+                    } else if (!validateStep1Activity(false)) {
+                      validateStep1Activity(true);
                     } else {
-                      validateStep2(true);
+                      validateStep2DateTime(true);
+                    }
+                  } else if (targetStep === 4) {
+                    if (validateStep1Activity(false) && validateStep2DateTime(false) && validateStep3Applicant(false)) {
+                      setWizardStep(4);
+                      scrollToModalTop();
+                    } else if (!validateStep1Activity(false)) {
+                      validateStep1Activity(true);
+                    } else if (!validateStep2DateTime(false)) {
+                      validateStep2DateTime(true);
+                    } else {
+                      validateStep3Applicant(true);
+                    }
+                  } else if (targetStep === 5) {
+                    if (validateStep1Activity(false) && validateStep2DateTime(false) && validateStep3Applicant(false)) {
+                      setWizardStep(5);
+                      scrollToModalTop();
+                    } else if (!validateStep1Activity(false)) {
+                      validateStep1Activity(true);
+                    } else if (!validateStep2DateTime(false)) {
+                      validateStep2DateTime(true);
+                    } else {
+                      validateStep3Applicant(true);
                     }
                   }
                 }}
@@ -1468,15 +1509,15 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                 <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-rose-100 border border-rose-300 text-rose-900 text-[11px] font-medium">
                   <div className="flex items-center space-x-1.5">
                     <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                    <span>Atención: Existe un topamiento de horario en el Paso 1. Resuélvelo antes de avanzar.</span>
+                    <span>Atención: Existe un topamiento de horario en el Paso 2 (Espacio y Horario). Resuélvelo antes de avanzar.</span>
                   </div>
-                  {wizardStep !== 1 && (
+                  {wizardStep !== 2 && (
                     <button
                       type="button"
-                      onClick={() => { setWizardStep(1); scrollToModalTop(); }}
+                      onClick={() => { setWizardStep(2); scrollToModalTop(); }}
                       className="text-rose-700 font-bold underline hover:text-rose-900 cursor-pointer"
                     >
-                      Ir al Paso 1
+                      Ir al Paso 2
                     </button>
                   )}
                 </div>
@@ -1484,8 +1525,20 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
             </div>
           )}
 
-          {/* 1. ¿Dónde y Cuándo? */}
-          <ReservationStep1DateTime
+          {/* Paso 1: Identificación y Actividad */}
+          {(!isWizardMode || wizardStep === 1) && (
+            <ReservationStep1Activity
+              isWizardMode={isWizardMode}
+              formData={formData}
+              setFormData={setFormData}
+              descriptionValidation={descriptionValidation}
+              effectiveActivityNames={effectiveActivityNames}
+              availableActivityTypes={availableActivityTypes}
+            />
+          )}
+
+          {/* Paso 2: Espacio, Fecha y Horarios */}
+          <ReservationStep2DateTime
             isWizardMode={isWizardMode}
             wizardStep={wizardStep}
             formData={formData}
@@ -1577,46 +1630,69 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
             generatedDates={generatedDates}
           />
 
-          {/* 2. ¿Quién lo solicita? */}
-      <ReservationStep2Applicant
-        isWizardMode={isWizardMode}
-        wizardStep={wizardStep}
-        formData={formData}
-        setFormData={setFormData}
-        handleResponsableChange={handleResponsableChange}
-        uniqueResponsablesList={uniqueResponsablesList}
-        autoFilledContactNotice={autoFilledContactNotice}
-        phoneValidation={phoneValidation}
-        rutValidation={rutValidation}
-        emailValidation={emailValidation}
-        primarySpaceCapacityWarning={primarySpaceCapacityWarning}
-        secondSpaceCapacityWarning={secondSpaceCapacityWarning}
-        singleSecondSpace={singleSecondSpace}
-        responsibleHistoryAlert={responsibleHistoryAlert}
-        descargarCartaAlCrear={descargarCartaAlCrear}
-        setDescargarCartaAlCrear={setDescargarCartaAlCrear}
-        setShowCommitmentLetterModal={setShowCommitmentLetterModal}
-        editingReservation={editingReservation}
-        effectiveFormDataForLetter={effectiveFormDataForLetter}
-        effectiveSeriesSlotsForLetter={effectiveSeriesSlotsForLetter}
-        allReservations={allReservations}
-      />
+          {/* Paso 3: Solicitante y Participantes */}
+          <ReservationStep3Applicant
+            isWizardMode={isWizardMode}
+            wizardStep={wizardStep}
+            formData={formData}
+            setFormData={setFormData}
+            handleResponsableChange={handleResponsableChange}
+            uniqueResponsablesList={uniqueResponsablesList}
+            autoFilledContactNotice={autoFilledContactNotice}
+            phoneValidation={phoneValidation}
+            rutValidation={rutValidation}
+            emailValidation={emailValidation}
+            primarySpaceCapacityWarning={primarySpaceCapacityWarning}
+            secondSpaceCapacityWarning={secondSpaceCapacityWarning}
+            singleSecondSpace={singleSecondSpace}
+            responsibleHistoryAlert={responsibleHistoryAlert}
+            descargarCartaAlCrear={descargarCartaAlCrear}
+            setDescargarCartaAlCrear={setDescargarCartaAlCrear}
+            setShowCommitmentLetterModal={setShowCommitmentLetterModal}
+            editingReservation={editingReservation}
+            effectiveFormDataForLetter={effectiveFormDataForLetter}
+            effectiveSeriesSlotsForLetter={effectiveSeriesSlotsForLetter}
+            allReservations={allReservations}
+          />
 
-      {/* 3. Detalles & Equipamiento */}
-      {(!isWizardMode || wizardStep === 3) && (
-        <ReservationStep3Details
-          isWizardMode={isWizardMode}
-          formData={formData}
-          setFormData={setFormData}
-          descriptionValidation={descriptionValidation}
-          effectiveActivityNames={effectiveActivityNames}
-          effectiveEquipment={effectiveEquipment}
-          allReservations={allReservations}
-          editingReservation={editingReservation}
-          bookingMode={bookingMode}
-          specificDates={specificDates}
-        />
-      )}
+          {/* Paso 4: Recursos y Documentación */}
+          <ReservationStep4ResourcesDocs
+            isWizardMode={isWizardMode}
+            wizardStep={wizardStep}
+            formData={formData}
+            setFormData={setFormData}
+            effectiveEquipment={effectiveEquipment}
+            allReservations={allReservations}
+            editingReservation={editingReservation}
+            descargarCartaAlCrear={descargarCartaAlCrear}
+            setDescargarCartaAlCrear={setDescargarCartaAlCrear}
+            setShowCommitmentLetterModal={setShowCommitmentLetterModal}
+            effectiveFormDataForLetter={effectiveFormDataForLetter}
+            effectiveSeriesSlotsForLetter={effectiveSeriesSlotsForLetter}
+          />
+
+          {/* Paso 5: Resumen y Confirmación */}
+          {isWizardMode && wizardStep === 5 && (
+            <ReservationStep5Review
+              isWizardMode={isWizardMode}
+              wizardStep={wizardStep}
+              formData={formData}
+              bookingMode={bookingMode}
+              specificDates={specificDates}
+              enableSingleSecondSpace={enableSingleSecondSpace}
+              singleSecondSpace={singleSecondSpace}
+              singleSecondStartTime={singleSecondStartTime}
+              singleSecondEndTime={singleSecondEndTime}
+              generatedDates={generatedDates}
+              conflicts={conflicts}
+              candidateConflictDates={candidateConflictDates}
+              onGoToStep={(step) => {
+                setWizardStep(step);
+                scrollToModalTop();
+              }}
+              descargarCartaAlCrear={descargarCartaAlCrear}
+            />
+          )}
 
           {/* Non-blocking Form Feedback Banner (D4 & D9) */}
           {formFeedback && (
@@ -1666,9 +1742,11 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
             setWizardStep={setWizardStep}
             scrollToModalTop={scrollToModalTop}
             onClose={onClose}
-            validateStep1={validateStep1}
-            validateStep2={validateStep2}
-            isFormSubmitDisabled={isFormSubmitDisabled}
+            validateStep1={validateStep1Activity}
+            validateStep2={validateStep2DateTime}
+            validateStep3={validateStep3Applicant}
+            validateStep4={validateStep4Resources}
+            isFormSubmitDisabled={isFormSubmitDisabled || isEditingLoading}
             isEditingExisting={isEditingExisting}
             conflicts={conflicts}
             candidateConflictDates={candidateConflictDates}
@@ -1681,8 +1759,10 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
             generateFullSeries={generateFullSeries}
             specificDates={specificDates}
             generatedDates={generatedDates}
-            isStep1Completed={isStep1Completed}
-            isStep2Completed={isStep2Completed}
+            isStep1Completed={isStep1ActivityCompleted}
+            isStep2Completed={isStep2DateTimeCompleted}
+            isStep3Completed={isStep3ApplicantCompleted}
+            isStep4Completed={isStep4ResourcesCompleted}
           />
         </form>
       </div>

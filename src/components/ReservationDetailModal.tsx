@@ -22,8 +22,10 @@ import {
   Check,
   Ban,
   Mail,
-  GitMerge
+  GitMerge,
+  CheckCircle2
 } from 'lucide-react';
+import { format } from 'date-fns';
 import { CommitmentLetterModal } from './CommitmentLetterModal';
 import { MergeReservationsModal } from './MergeReservationsModal';
 import { getPhoneContactActions } from '../utils/phoneUtils';
@@ -452,15 +454,43 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
               <span className="text-[11px] text-slate-500 font-medium">Asistencia:</span>
               <button
                 type="button"
-                onClick={() => onToggleRealizada && onToggleRealizada(reservation)}
-                className={`text-[10px] font-bold px-1.5 py-0.5 rounded cursor-pointer transition ${
+                onClick={() => {
+                  if (!onToggleRealizada) return;
+                  const isCurrentlyAttended = reservation.realizada === 'Sí';
+                  const todayStr = format(new Date(), 'yyyy-MM-dd');
+                  const isFutureDate = reservation.fecha > todayStr;
+
+                  if (!isCurrentlyAttended && isFutureDate) {
+                    openConfirm({
+                      title: 'Confirmar asistencia anticipada',
+                      message: `Esta reserva está agendada para el ${formatDateDDMMYYYY(reservation.fecha)}, una fecha futura. ¿Deseas marcarla como realizada anticipadamente?`,
+                      confirmLabel: 'Sí, marcar como realizada',
+                      cancelLabel: 'Cancelar',
+                      variant: 'warning',
+                      onConfirm: () => {
+                        onToggleRealizada(reservation);
+                        closeConfirm();
+                      }
+                    });
+                  } else {
+                    onToggleRealizada(reservation);
+                  }
+                }}
+                className={`text-[11px] font-bold px-2 py-0.5 rounded-md cursor-pointer transition inline-flex items-center gap-1 shadow-xs ${
                   reservation.realizada === 'Sí'
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200'
+                    : 'bg-slate-200 text-slate-700 hover:bg-slate-300 border border-slate-300'
                 }`}
                 title="Haga clic para alternar asistencia"
               >
-                {reservation.realizada === 'Sí' ? '✓ Realizada' : 'Pendiente'}
+                {reservation.realizada === 'Sí' ? (
+                  <>
+                    <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                    <span>Realizada</span>
+                  </>
+                ) : (
+                  <span>Pendiente</span>
+                )}
               </button>
             </div>
           </div>

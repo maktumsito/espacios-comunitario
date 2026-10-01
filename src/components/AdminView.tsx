@@ -2220,6 +2220,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           >
             <MaintenanceDashboardView
               blocks={spaceBlocks || []}
+              availableSpaces={spaces}
               onSaveBlock={onSaveBlock || (async () => {})}
               onDeleteBlock={onDeleteBlock || (async () => {})}
             />

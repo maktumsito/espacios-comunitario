@@ -25,13 +25,72 @@
 :root {
   font-family: var(--font-sans);
   color-scheme: light;
+
+  /* Soft UI Design System Tokens */
+  --bg-main: #F5F7FA;
+  --surface-card: #FFFFFF;
+  --surface-subtle: #EEF2F6;
+  --surface-hover: #F8FAFC;
+  --border-subtle: #E2E8F0;
+  --border-card: #E5E9F0;
+  --text-primary: #28323C;
+  --text-secondary: #5F6B7A;
+  --text-muted: #8E9BAA;
+  --color-primary-brand: #315CB8;
+  --color-primary-light: #EBF1FA;
+  --color-accent-amber: #D97706;
+  --color-accent-emerald: #059669;
+  --color-accent-rose: #DC2626;
+
+  --shadow-soft-card: 0 4px 14px 0 rgba(20, 30, 50, 0.04), 0 1px 3px 0 rgba(20, 30, 50, 0.02);
+  --shadow-soft-elevated: 0 8px 28px -4px rgba(49, 92, 184, 0.08), 0 2px 8px -2px rgba(20, 30, 50, 0.03);
+  --shadow-soft-hover: 0 10px 25px -3px rgba(49, 92, 184, 0.12), 0 4px 10px -2px rgba(20, 30, 50, 0.04);
+}
+
+/* Soft UI utility classes */
+.soft-card {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-card);
+  border-radius: 1rem; /* 16px */
+  box-shadow: var(--shadow-soft-card);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.soft-card-elevated {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-card);
+  border-radius: 1.25rem; /* 20px */
+  box-shadow: var(--shadow-soft-elevated);
+}
+
+.soft-card-interactive {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-card);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-soft-card);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+.soft-card-interactive:hover {
+  transform: translateY(-1.5px);
+  box-shadow: var(--shadow-soft-hover);
+  border-color: #CBD5E1;
+}
+
+/* Accessible touch targets (minimum 44x44px for primary mobile interaction) */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 body {
   font-size: 0.875rem;
   line-height: 1.5;
-  color: #0f172a;
-  background-color: #f5f7fb;
+  color: var(--text-primary);
+  background-color: var(--bg-main);
   -webkit-font-smoothing: antialiased;
 }
 

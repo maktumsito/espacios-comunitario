@@ -16,6 +16,7 @@ export interface CommitmentScheduleSlot {
 export interface CommitmentLetterOptions {
   seriesScheduleItems?: CommitmentScheduleSlot[];
   allReservations?: Reservation[];
+  isDraft?: boolean;
 }
 
 /**
@@ -784,10 +785,12 @@ export async function generateCommitmentLetterPdfDoc(
     doc.text(`ANEXO: CALENDARIO DETALLADO DE SESIONES (${rangeInfo.totalSessions} SESIONES)`, margin, y3);
     y3 += 5.0;
 
+    const isDocDraft = Boolean(options?.isDraft || !reservation.id || reservation.estado !== 'activa');
+
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.0);
     doc.setTextColor(71, 85, 105);
-    doc.text(`Folio de referencia: ${folioNumber} | Solicitante: ${resp}`, margin, y3);
+    doc.text(`Folio de referencia: ${folioNumber} | Solicitante: ${resp || '______________________'}`, margin, y3);
     y3 += 5.5;
 
     const slotsTableBody = rangeInfo.slots.map((s, idx) => {
@@ -804,7 +807,7 @@ export async function generateCommitmentLetterPdfDoc(
         dayName,
         (s.espacio || 'ESPACIO').toUpperCase(),
         `${s.horaInicio} - ${s.horaFin} hrs.`,
-        'Autorizado'
+        isDocDraft ? 'Borrador' : 'Autorizado'
       ];
     });
 
