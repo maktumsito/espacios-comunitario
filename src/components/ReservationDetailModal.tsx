@@ -21,7 +21,6 @@ import {
   XCircle,
   Check,
   Ban,
-  Mail,
   GitMerge,
   CheckCircle2
 } from 'lucide-react';
@@ -59,7 +58,6 @@ interface ReservationDetailModalProps {
   currentUser?: AuthUser | null;
   onAuthorizeDelete?: (reservation: Reservation) => void;
   onRejectDeleteRequest?: (reservation: Reservation) => void;
-  onOpenGmailDispatch?: (date: string, filterMode?: 'solo_prestamos' | 'todas', reservationId?: string) => void;
 }
 
 export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
@@ -78,8 +76,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
   allReservations = [],
   currentUser,
   onAuthorizeDelete,
-  onRejectDeleteRequest,
-  onOpenGmailDispatch
+  onRejectDeleteRequest
 }) => {
   const [showCommitmentLetter, setShowCommitmentLetter] = React.useState(false);
   const [showMergeModal, setShowMergeModal] = React.useState(false);
@@ -753,26 +750,25 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
               </button>
             )}
 
-            {onOpenGmailDispatch && (
+            {canModify && onUpdateReservation && (
               <button
-                id="btn-detail-dispatch-email"
+                id="btn-detail-toggle-important"
                 type="button"
-                aria-label="Despachar esta reserva por correo electrónico"
-                onClick={() => {
-                  onClose();
-                  const isLoan = Boolean(reservation.tipoPrestamo && reservation.tipoPrestamo.trim() !== '') ||
-                    Boolean(reservation.tipoActividad && /pr[eé]stamo/i.test(reservation.tipoActividad));
-                  onOpenGmailDispatch(
-                    reservation.fecha,
-                    isLoan ? 'solo_prestamos' : 'todas',
-                    reservation.id
-                  );
-                }}
-                className="flex items-center space-x-1.5 text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 font-bold px-3 py-2 rounded-xl transition shadow-xs cursor-pointer"
-                title="Despachar esta reserva por correo electrónico oficial"
+                aria-label={reservation.importante === 'Sí' ? 'Desmarcar reserva importante' : 'Marcar reserva como importante'}
+                aria-pressed={reservation.importante === 'Sí'}
+                onClick={() => onUpdateReservation({
+                  ...reservation,
+                  importante: reservation.importante === 'Sí' ? 'No' : 'Sí'
+                })}
+                className={`flex items-center space-x-1.5 text-xs border font-bold px-3 py-2 rounded-xl transition shadow-xs cursor-pointer ${
+                  reservation.importante === 'Sí'
+                    ? 'text-amber-950 bg-amber-100 hover:bg-amber-200 border-amber-300'
+                    : 'text-slate-700 bg-slate-50 hover:bg-amber-50 border-slate-200'
+                }`}
+                title={reservation.importante === 'Sí' ? 'Desmarcar reserva importante' : 'Marcar reserva como importante'}
               >
-                <Mail className="w-4 h-4 text-blue-600" />
-                <span>Despachar por Correo</span>
+                <Flame className="w-4 h-4 text-amber-600" />
+                <span>{reservation.importante === 'Sí' ? 'Desmarcar Importante' : 'Marcar Importante'}</span>
               </button>
             )}
           </div>

@@ -1397,9 +1397,6 @@ export default function App() {
                 }
               }, 'actualizar asistencia de reserva');
             }}
-            onOpenGmailDispatch={(date, filterMode, resId) => {
-              openGmailDispatchModal(date, filterMode, resId);
-            }}
           />
         </Suspense>
       )}
