@@ -496,34 +496,16 @@ export function useReservationConflictResolution({
   const candidateConflictDates = useMemo<string[]>(() => {
     const datesWithConflicts: string[] = [];
 
-    if (editingReservation && !isDuplicating && isEditingRecurring) {
-      if (updateScope === 'single') {
-        const d = formData.fecha || editingReservation.fecha;
-        if (d && formData.espacio && formData.horaInicio && formData.horaFin) {
-          const s1 = checkSingleConflict(
-            { ...formData, fecha: d, horaInicio: formData.horaInicio, horaFin: formData.horaFin, espacio: formData.espacio },
-            allReservations,
-            excludeReservationIds,
-            excludeSeriesId
-          );
-          if (s1.length > 0) datesWithConflicts.push(d);
-        }
-      } else {
-        affectedReservations.forEach((r) => {
-          const s1 = checkSingleConflict(
-            {
-              ...formData,
-              fecha: r.fecha,
-              horaInicio: formData.horaInicio || r.horaInicio,
-              horaFin: formData.horaFin || r.horaFin,
-              espacio: formData.espacio || r.espacio
-            },
-            allReservations,
-            excludeReservationIds,
-            excludeSeriesId
-          );
-          if (s1.length > 0) datesWithConflicts.push(r.fecha);
-        });
+    if (editingReservation && !isDuplicating && isEditingRecurring && updateScope === 'single' && bookingMode === 'single') {
+      const d = formData.fecha || editingReservation.fecha;
+      if (d && formData.espacio && formData.horaInicio && formData.horaFin) {
+        const s1 = checkSingleConflict(
+          { ...formData, fecha: d, horaInicio: formData.horaInicio, horaFin: formData.horaFin, espacio: formData.espacio },
+          allReservations,
+          excludeReservationIds,
+          excludeSeriesId
+        );
+        if (s1.length > 0) datesWithConflicts.push(d);
       }
       return Array.from(new Set(datesWithConflicts));
     }

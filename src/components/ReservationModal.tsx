@@ -613,9 +613,13 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
       });
       // Inicia bloqueado por defecto para requerir validación estricta de clave ccd2026
       setExtendedAuthKey('');
-      setGenerateFullSeries(isCopy ? true : false);
+      const isRecurringSeries = !isCopy && !isMultiSpace && Boolean(
+        editingReservation.actividadRecurrente === 'Sí' ||
+        Boolean(editingReservation.serieRecurrente || editingReservation.recurrenteId)
+      );
+      setGenerateFullSeries(isCopy ? true : isRecurringSeries);
       setAllowConflictOverride(false);
-      setUpdateScope('single');
+      setUpdateScope(isRecurringSeries ? 'series' : 'single');
       setRangeStartDate(editingReservation.fecha || format(new Date(), 'yyyy-MM-dd'));
       setRangeEndDate(editingReservation.fecha || format(new Date(), 'yyyy-MM-dd'));
       setSelectedOccurrenceIds(new Set([editingReservation.id]));
@@ -653,7 +657,12 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
           const dates = sortedMatches.map((r) => r.fecha);
           setSpecificDates(dates);
           setRecurrenceStartDate(dates[0]);
-          setRecurrenceEndDate(dates[dates.length - 1]);
+          const lastMatchedDate = dates[dates.length - 1];
+          const initialEndDate =
+            editingReservation.fechaFinRecurrencia && editingReservation.fechaFinRecurrencia > lastMatchedDate
+              ? editingReservation.fechaFinRecurrencia
+              : lastMatchedDate;
+          setRecurrenceEndDate(initialEndDate);
 
           const dayMap: Record<number, { horaInicio: string; horaFin: string; espacio?: string }> = {};
           const dateMap: Record<string, { horaInicio: string; horaFin: string; espacio?: string }> = {};
@@ -848,9 +857,26 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     }
   };
 
+  const handleRecurrenceEndDateChange = (val: string) => {
+    setRecurrenceEndDate(val);
+    if (editingReservation && !isDuplicating && isEditingRecurring && updateScope === 'single') {
+      setUpdateScope('series');
+    }
+  };
+
+  const handleBookingModeChange = (mode: 'single' | 'specific' | 'pattern') => {
+    setBookingMode(mode);
+    if (editingReservation && !isDuplicating && isEditingRecurring && updateScope === 'single' && mode !== 'single') {
+      setUpdateScope('series');
+    }
+  };
+
   // Specific dates handlers
   const handleAddSpecificDate = (dateStr: string) => {
     if (!dateStr) return;
+    if (editingReservation && !isDuplicating && isEditingRecurring && updateScope === 'single') {
+      setUpdateScope('series');
+    }
     setSpecificDates((prev) => {
       if (prev.includes(dateStr)) return prev;
       return [...prev, dateStr].sort();
@@ -862,6 +888,9 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
   };
 
   const handleRemoveSpecificDate = (dateStr: string) => {
+    if (editingReservation && !isDuplicating && isEditingRecurring && updateScope === 'single') {
+      setUpdateScope('series');
+    }
     setSpecificDates((prev) => {
       const filtered = prev.filter((d) => d !== dateStr);
       if (filtered.length > 0 && formData.fecha === dateStr) {
@@ -892,6 +921,9 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
 
   // Day toggler for pattern recurrence
   const toggleDay = (dayNum: number) => {
+    if (editingReservation && !isDuplicating && isEditingRecurring && updateScope === 'single') {
+      setUpdateScope('series');
+    }
     setSelectedDays((prev) => {
       if (prev.includes(dayNum)) {
         if (prev.length === 1) return prev; // Keep at least one day
@@ -1589,7 +1621,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
             setHolidayOverrideKey={setHolidayOverrideKey}
             isHolidayAuthorized={isHolidayAuthorized}
             bookingMode={bookingMode}
-            setBookingMode={setBookingMode}
+            setBookingMode={handleBookingModeChange}
             generateFullSeries={generateFullSeries}
             setGenerateFullSeries={setGenerateFullSeries}
             specificDates={specificDates}
@@ -1617,7 +1649,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
             recurrenceStartDate={recurrenceStartDate}
             setRecurrenceStartDate={setRecurrenceStartDate}
             recurrenceEndDate={recurrenceEndDate}
-            setRecurrenceEndDate={setRecurrenceEndDate}
+            setRecurrenceEndDate={handleRecurrenceEndDateChange}
             includeHolidaysInSeries={includeHolidaysInSeries}
             setIncludeHolidaysInSeries={setIncludeHolidaysInSeries}
             patternHolidayAnalysis={patternHolidayAnalysis}

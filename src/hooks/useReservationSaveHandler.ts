@@ -996,64 +996,218 @@ export function useReservationSaveHandler({
             return;
           }
         } else {
-          // MULTI-OCCURRENCE UPDATE (future, series, dateRange, selected)
+          // MULTI-OCCURRENCE / SERIES EXPANSION UPDATE (future, series, dateRange, selected)
           const deletedSet = getDeletedIds();
           const cleanAffected = affectedReservations.filter(
             (orig) => !deletedSet.has(orig.id) && orig.estado !== 'eliminada' && isReservationActiveForAvailability(orig)
           );
 
-          if (cleanAffected.length === 0) {
+          if (cleanAffected.length === 0 && (!finalDates || finalDates.length === 0)) {
             abortWithFeedback('No se encontraron reservas activas para actualizar en la serie seleccionada.');
             return;
           }
 
-          const updatedList: Reservation[] = cleanAffected.map((orig) => ({
-            ...orig,
-            horaInicio: effectiveFormData.horaInicio || orig.horaInicio,
-            horaFin: effectiveFormData.horaFin || orig.horaFin,
-            espacio: normalizedSpace || orig.espacio,
-            tipoActividad: effectiveFormData.tipoActividad || orig.tipoActividad,
-            descripcion:
-              effectiveFormData.descripcion !== undefined ? effectiveFormData.descripcion : orig.descripcion,
-            responsable: effectiveFormData.responsable || orig.responsable,
-            telefonoContacto:
-              effectiveFormData.telefonoContacto !== undefined
-                ? effectiveFormData.telefonoContacto
-                : orig.telefonoContacto,
-            emailContacto:
-              effectiveFormData.emailContacto !== undefined
-                ? effectiveFormData.emailContacto
-                : orig.emailContacto,
-            tipoPrestamo: effectiveFormData.tipoPrestamo || orig.tipoPrestamo,
-            cantidadParticipantes:
-              Number(effectiveFormData.cantidadParticipantes) || orig.cantidadParticipantes || 10,
-            equipamientoSolicitado: effectiveFormData.equipamientoSolicitado
+          const seriesId =
+            editingReservation.serieRecurrente ||
+            editingReservation.recurrenteId ||
+            cleanAffected[0]?.serieRecurrente ||
+            cleanAffected[0]?.recurrenteId ||
+            `SER_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+          const baseRef = cleanAffected[0] || editingReservation;
+
+          interface NormalizedSlot {
+            fecha: string;
+            horaInicio: string;
+            horaFin: string;
+            espacio: string;
+          }
+
+          // Target slots from explicit series payload (handles date expansion, per-day / per-date schedules, second space)
+          const targetSlots: NormalizedSlot[] = (isRecurring && finalSeriesPayload.length > 0)
+            ? finalSeriesPayload.map((item) => {
+                if (typeof item === 'string') {
+                  return {
+                    fecha: item,
+                    horaInicio: effectiveFormData.horaInicio || '10:00',
+                    horaFin: effectiveFormData.horaFin || '11:00',
+                    espacio: normalizedSpace
+                  };
+                }
+                return {
+                  fecha: item.fecha,
+                  horaInicio: item.horaInicio || effectiveFormData.horaInicio || '10:00',
+                  horaFin: item.horaFin || effectiveFormData.horaFin || '11:00',
+                  espacio: item.espacio || normalizedSpace
+                };
+              })
+            : cleanAffected.map((orig) => ({
+                fecha: orig.fecha,
+                horaInicio: effectiveFormData.horaInicio || orig.horaInicio,
+                horaFin: effectiveFormData.horaFin || orig.horaFin,
+                espacio: normalizedSpace || orig.espacio
+              }));
+
+          const existingByDateAndSpace = new Map<string, Reservation[]>();
+          cleanAffected.forEach((res) => {
+            const key = `${res.fecha}_${res.espacio.trim().toUpperCase()}`;
+            const list = existingByDateAndSpace.get(key) || [];
+            list.push(res);
+            existingByDateAndSpace.set(key, list);
+          });
+
+          const existingByDateOnly = new Map<string, Reservation[]>();
+          cleanAffected.forEach((res) => {
+            const list = existingByDateOnly.get(res.fecha) || [];
+            list.push(res);
+            existingByDateOnly.set(res.fecha, list);
+          });
+
+          const usedExistingIds = new Set<string>();
+          const updatedList: Reservation[] = [];
+
+          for (let sIdx = 0; sIdx < targetSlots.length; sIdx++) {
+            const slot = targetSlots[sIdx];
+            const key = `${slot.fecha}_${slot.espacio.trim().toUpperCase()}`;
+            let match = existingByDateAndSpace.get(key)?.find((r) => !usedExistingIds.has(r.id));
+            if (!match) {
+              match = existingByDateOnly.get(slot.fecha)?.find((r) => !usedExistingIds.has(r.id));
+            }
+
+            const slotEquip = effectiveFormData.equipamientoSolicitado
               ? JSON.parse(JSON.stringify(effectiveFormData.equipamientoSolicitado))
-              : orig.equipamientoSolicitado,
-            importante: effectiveFormData.importante || orig.importante,
-            comentarios:
-              effectiveFormData.comentarios !== undefined ? effectiveFormData.comentarios : orig.comentarios,
-            rut: effectiveFormData.rut !== undefined ? effectiveFormData.rut : orig.rut,
-            domicilio: effectiveFormData.domicilio !== undefined ? effectiveFormData.domicilio : orig.domicilio,
-            requiereCartaCompromiso:
-              isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) ||
-              Boolean(effectiveFormData.requiereCartaCompromiso),
-            realizada: effectiveFormData.realizada || orig.realizada,
-            terminaDiaSiguiente: Boolean(effectiveFormData.terminaDiaSiguiente),
-            horarioExtendidoAutorizado: loanScheduleCheck.requiresAuthorization
-              ? true
-              : Boolean(effectiveFormData.horarioExtendidoAutorizado),
-            claveAutorizacion: loanScheduleCheck.requiresAuthorization
-              ? 'ccd2026'
-              : effectiveFormData.claveAutorizacion || orig.claveAutorizacion || '',
-            autorizadoPor: loanScheduleCheck.requiresAuthorization
-              ? currentUser?.name || currentUser?.username || 'Administrador/Coordinador'
-              : effectiveFormData.autorizadoPor || orig.autorizadoPor || '',
-            editadoPor: currentUser?.name || currentUser?.username || 'Usuario',
-            fechaEdicion: format(new Date(), 'dd/MM/yyyy HH:mm:ss'),
-            version: ((orig as any)?.version || 0) + 1,
-            updatedAt: new Date().toISOString()
-          }));
+              : (baseRef.equipamientoSolicitado ? JSON.parse(JSON.stringify(baseRef.equipamientoSolicitado)) : []);
+
+            if (match) {
+              usedExistingIds.add(match.id);
+              updatedList.push({
+                ...match,
+                horaInicio: slot.horaInicio || effectiveFormData.horaInicio || match.horaInicio,
+                horaFin: slot.horaFin || effectiveFormData.horaFin || match.horaFin,
+                espacio: slot.espacio || normalizedSpace || match.espacio,
+                tipoActividad: effectiveFormData.tipoActividad || match.tipoActividad,
+                descripcion:
+                  effectiveFormData.descripcion !== undefined ? effectiveFormData.descripcion : match.descripcion,
+                responsable: effectiveFormData.responsable || match.responsable,
+                telefonoContacto:
+                  effectiveFormData.telefonoContacto !== undefined
+                    ? effectiveFormData.telefonoContacto
+                    : match.telefonoContacto,
+                emailContacto:
+                  effectiveFormData.emailContacto !== undefined
+                    ? effectiveFormData.emailContacto
+                    : match.emailContacto,
+                tipoPrestamo: effectiveFormData.tipoPrestamo || match.tipoPrestamo,
+                cantidadParticipantes:
+                  Number(effectiveFormData.cantidadParticipantes) || match.cantidadParticipantes || 10,
+                equipamientoSolicitado: slotEquip,
+                importante: effectiveFormData.importante || match.importante,
+                comentarios:
+                  effectiveFormData.comentarios !== undefined ? effectiveFormData.comentarios : match.comentarios,
+                rut: effectiveFormData.rut !== undefined ? effectiveFormData.rut : match.rut,
+                domicilio: effectiveFormData.domicilio !== undefined ? effectiveFormData.domicilio : match.domicilio,
+                requiereCartaCompromiso:
+                  isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) ||
+                  Boolean(effectiveFormData.requiereCartaCompromiso),
+                realizada: effectiveFormData.realizada || match.realizada,
+                terminaDiaSiguiente: Boolean(effectiveFormData.terminaDiaSiguiente),
+                horarioExtendidoAutorizado: loanScheduleCheck.requiresAuthorization
+                  ? true
+                  : Boolean(effectiveFormData.horarioExtendidoAutorizado),
+                claveAutorizacion: loanScheduleCheck.requiresAuthorization
+                  ? 'ccd2026'
+                  : effectiveFormData.claveAutorizacion || match.claveAutorizacion || '',
+                autorizadoPor: loanScheduleCheck.requiresAuthorization
+                  ? currentUser?.name || currentUser?.username || 'Administrador/Coordinador'
+                  : effectiveFormData.autorizadoPor || match.autorizadoPor || '',
+                actividadRecurrente: 'Sí',
+                serieRecurrente: seriesId,
+                recurrenteId: seriesId,
+                tipoRecurrencia: isSpecific ? 'especificas' : 'semanal',
+                diasSemana: diasSemanaStr,
+                fechaInicioRecurrencia: recurrenceStartDate || finalDates[0] || match.fecha,
+                fechaFinRecurrencia: recurrenceEndDate || finalDates[finalDates.length - 1] || match.fecha,
+                editadoPor: currentUser?.name || currentUser?.username || 'Usuario',
+                fechaEdicion: format(new Date(), 'dd/MM/yyyy HH:mm:ss'),
+                version: ((match as any)?.version || 0) + 1,
+                updatedAt: new Date().toISOString()
+              });
+            } else {
+              // Brand new occurrence for newly expanded dates/slots in the series
+              updatedList.push({
+                ...baseRef,
+                id: `RSV_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+                fecha: slot.fecha,
+                horaInicio: slot.horaInicio || effectiveFormData.horaInicio || '10:00',
+                horaFin: slot.horaFin || effectiveFormData.horaFin || '11:00',
+                espacio: slot.espacio || normalizedSpace,
+                tipoActividad: effectiveFormData.tipoActividad || baseRef.tipoActividad || 'OTROS',
+                descripcion:
+                  effectiveFormData.descripcion !== undefined ? effectiveFormData.descripcion : (baseRef.descripcion || ''),
+                responsable: effectiveFormData.responsable || baseRef.responsable || '',
+                telefonoContacto:
+                  effectiveFormData.telefonoContacto !== undefined
+                    ? effectiveFormData.telefonoContacto
+                    : (baseRef.telefonoContacto || ''),
+                emailContacto:
+                  effectiveFormData.emailContacto !== undefined
+                    ? effectiveFormData.emailContacto
+                    : (baseRef.emailContacto || ''),
+                tipoPrestamo: effectiveFormData.tipoPrestamo || baseRef.tipoPrestamo || '',
+                cantidadParticipantes:
+                  Number(effectiveFormData.cantidadParticipantes) || baseRef.cantidadParticipantes || 10,
+                equipamientoSolicitado: slotEquip,
+                importante: effectiveFormData.importante || baseRef.importante || 'No',
+                comentarios:
+                  effectiveFormData.comentarios !== undefined ? effectiveFormData.comentarios : (baseRef.comentarios || ''),
+                rut: effectiveFormData.rut !== undefined ? effectiveFormData.rut : (baseRef.rut || ''),
+                domicilio: effectiveFormData.domicilio !== undefined ? effectiveFormData.domicilio : (baseRef.domicilio || ''),
+                requiereCartaCompromiso:
+                  isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) ||
+                  Boolean(effectiveFormData.requiereCartaCompromiso),
+                realizada: 'No',
+                terminaDiaSiguiente: Boolean(effectiveFormData.terminaDiaSiguiente),
+                horarioExtendidoAutorizado: loanScheduleCheck.requiresAuthorization
+                  ? true
+                  : Boolean(effectiveFormData.horarioExtendidoAutorizado),
+                claveAutorizacion: loanScheduleCheck.requiresAuthorization
+                  ? 'ccd2026'
+                  : effectiveFormData.claveAutorizacion || '',
+                autorizadoPor: loanScheduleCheck.requiresAuthorization
+                  ? currentUser?.name || currentUser?.username || 'Administrador/Coordinador'
+                  : effectiveFormData.autorizadoPor || '',
+                actividadRecurrente: 'Sí',
+                serieRecurrente: seriesId,
+                recurrenteId: seriesId,
+                tipoRecurrencia: isSpecific ? 'especificas' : 'semanal',
+                diasSemana: diasSemanaStr,
+                fechaInicioRecurrencia: recurrenceStartDate || finalDates[0] || slot.fecha,
+                fechaFinRecurrencia: recurrenceEndDate || finalDates[finalDates.length - 1] || slot.fecha,
+                estado: 'confirmada',
+                version: 1,
+                editadoPor: currentUser?.name || currentUser?.username || 'Usuario',
+                fechaEdicion: format(new Date(), 'dd/MM/yyyy HH:mm:ss'),
+                updatedAt: new Date().toISOString()
+              });
+            }
+          }
+
+          // Unmatched existing reservations in cleanAffected if series was shortened
+          const idsToDelete: string[] = cleanAffected
+            .filter((orig) => !usedExistingIds.has(orig.id))
+            .map((orig) => orig.id);
+
+          // Chronological sort and dynamic re-indexing of serie positions
+          updatedList.sort((a, b) => {
+            if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
+            return a.horaInicio.localeCompare(b.horaInicio);
+          });
+
+          const totalSeriesCount = updatedList.length;
+          updatedList.forEach((r, idx) => {
+            r.indiceEnSerie = idx + 1;
+            r.totalEnSerie = totalSeriesCount;
+          });
 
           const scopeLabels: Record<UpdateScope, string> = {
             single: 'Solo esta reserva',
@@ -1068,7 +1222,8 @@ export function useReservationSaveHandler({
               scope: updateScope,
               updatedReservations: updatedList,
               affectedIds: updatedList.map((r) => r.id),
-              description: `Actualizadas ${updatedList.length} reservas (${scopeLabels[updateScope]}) para '${effectiveFormData.tipoActividad || 'Actividad'}' (${effectiveFormData.responsable || 'Responsable'})`
+              deletedIds: idsToDelete.length > 0 ? idsToDelete : undefined,
+              description: `Actualizadas ${updatedList.length} reservas (${scopeLabels[updateScope] || updateScope}) para '${effectiveFormData.tipoActividad || 'Actividad'}' (${effectiveFormData.responsable || 'Responsable'})`
             })
           );
           if (batchResult === false) {

@@ -68,6 +68,8 @@ export interface BatchUpdateInfo {
   affectedIds: string[];
   description?: string;
   sourceReservationId?: string;
+  deletedIds?: string[];
+  addedIds?: string[];
 }
 
 export interface DeletionRequest {

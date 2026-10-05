@@ -609,12 +609,16 @@ export function useReservationCrud({
           (r) => !deletedSet.has(r.id) && isReservationActiveForAvailability(r, deletedSet)
         );
 
-        // Validate conflicts excluding affected reservations
+        const seriesIdToExclude = scope === 'series'
+          ? (reserva.serieRecurrente || reserva.recurrenteId || activeUpdated.find((r) => r.serieRecurrente || r.recurrenteId)?.serieRecurrente)
+          : undefined;
+
+        // Validate conflicts excluding affected reservations and current series
         const conflictsFound = detectBatchConflicts(
           activeUpdated,
           cleanReservations,
           new Set(cleanAffectedIds),
-          scope === 'series' ? (reserva.serieRecurrente || reserva.recurrenteId) : undefined
+          seriesIdToExclude
         );
 
         if (conflictsFound.length > 0 && !allowConflictOverride) {
@@ -625,9 +629,14 @@ export function useReservationCrud({
         }
 
         // Optimistic cache/state update (no duplicates, deterministic sort)
+        const toDeleteSet = new Set(batchUpdateInfo.deletedIds || []);
         setReservations((prev) => {
           const map = new Map<string, Reservation>();
-          prev.forEach((r) => map.set(r.id, r));
+          prev.forEach((r) => {
+            if (!toDeleteSet.has(r.id)) {
+              map.set(r.id, r);
+            }
+          });
           activeUpdated.forEach((r) => map.set(r.id, r));
           return Array.from(map.values()).sort((a, b) => {
             if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
@@ -652,6 +661,9 @@ export function useReservationCrud({
         // Persist to Firestore and record audit in background
         (async () => {
           try {
+            if (batchUpdateInfo.deletedIds && batchUpdateInfo.deletedIds.length > 0) {
+              await deleteReservationsBatch(batchUpdateInfo.deletedIds);
+            }
             if (activeUpdated.length === 1) {
               await saveReservation(activeUpdated[0]);
             } else {

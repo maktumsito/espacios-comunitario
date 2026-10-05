@@ -208,24 +208,33 @@ export function useReservationSeriesState({
     if (editingReservation.id) ids.push(editingReservation.id);
     if (formData.id && formData.id !== editingReservation.id) ids.push(formData.id);
 
-    // If editing recurring series, exclude all reservations affected in current scope
+    // If editing recurring series, exclude reservations in current scope or full series
     if (isEditingRecurring) {
-      if (updateScope === 'single') {
+      if (updateScope === 'single' && bookingMode === 'single') {
         ids.push(editingReservation.id);
+      } else if (updateScope === 'series' || bookingMode === 'pattern' || bookingMode === 'specific') {
+        // Exclude all series members so none conflict with their own expanded dates
+        seriesReservations.forEach((r) => ids.push(r.id));
       } else {
         affectedReservations.forEach((r) => ids.push(r.id));
       }
     }
     return Array.from(new Set(ids));
-  }, [editingReservation, formData.id, isDuplicating, isEditingRecurring, updateScope, affectedReservations]);
+  }, [editingReservation, formData.id, isDuplicating, isEditingRecurring, updateScope, bookingMode, seriesReservations, affectedReservations]);
 
   const excludeSeriesId = useMemo(() => {
     if (isDuplicating || !editingReservation) return undefined;
-    if (isEditingRecurring && updateScope === 'series') {
-      return editingReservation.serieRecurrente || editingReservation.recurrenteId || undefined;
+    const sId =
+      editingReservation.serieRecurrente ||
+      editingReservation.recurrenteId ||
+      seriesReservations[0]?.serieRecurrente ||
+      seriesReservations[0]?.recurrenteId;
+
+    if (isEditingRecurring && (updateScope === 'series' || bookingMode === 'pattern' || bookingMode === 'specific')) {
+      return sId || undefined;
     }
     return undefined;
-  }, [editingReservation, isDuplicating, isEditingRecurring, updateScope]);
+  }, [editingReservation, isDuplicating, isEditingRecurring, updateScope, bookingMode, seriesReservations]);
 
   return {
     isEditingRecurring,
