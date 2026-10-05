@@ -17,7 +17,7 @@ interface FilterBarProps {
   availableActivityTypes?: ActivityTypeItem[];
 }
 
-export const FilterBar: React.FC<FilterBarProps> = ({
+const FilterBarComponent: React.FC<FilterBarProps> = ({
   filters,
   onFilterChange,
   onResetFilters,
@@ -48,6 +48,21 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     filters.soloImportantes ||
     Boolean(filters.soloConTopamiento);
 
+  const [localSearch, setLocalSearch] = React.useState(filters.search || '');
+
+  React.useEffect(() => {
+    setLocalSearch(filters.search || '');
+  }, [filters.search]);
+
+  React.useEffect(() => {
+    const handler = setTimeout(() => {
+      if (localSearch !== filters.search) {
+        onFilterChange({ ...filters, search: localSearch });
+      }
+    }, 150);
+    return () => clearTimeout(handler);
+  }, [localSearch, filters, onFilterChange]);
+
   return (
     <div className="bg-white border-b border-slate-200 py-3.5 px-3 sm:px-4 lg:px-6 shadow-xs">
       <div className="w-full max-w-[1680px] mx-auto space-y-3">
@@ -59,16 +74,19 @@ export const FilterBar: React.FC<FilterBarProps> = ({
               id="filter-search-input"
               type="text"
               placeholder="Buscar por taller, responsable, RUT, email, descripción o ID..."
-              value={filters.search}
-              onChange={(e) => onFilterChange({ ...filters, search: e.target.value })}
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
               className="w-full pl-9 pr-9 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
             />
-            {filters.search && (
+            {localSearch && (
               <button
                 type="button"
                 id="btn-clear-search-filter"
                 aria-label="Borrar texto de búsqueda"
-                onClick={() => onFilterChange({ ...filters, search: '' })}
+                onClick={() => {
+                  setLocalSearch('');
+                  onFilterChange({ ...filters, search: '' });
+                }}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200 transition cursor-pointer"
                 title="Limpiar búsqueda"
               >
@@ -281,3 +299,6 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     </div>
   );
 };
+
+export const FilterBar = React.memo(FilterBarComponent);
+

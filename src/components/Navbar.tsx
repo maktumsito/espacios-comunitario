@@ -58,7 +58,7 @@ interface NavbarProps {
   onRetrySync?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({
+const NavbarComponent: React.FC<NavbarProps> = ({
   currentView,
   onViewChange,
   onNewReservation,
@@ -834,3 +834,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
+
+export const Navbar = React.memo(NavbarComponent);
+

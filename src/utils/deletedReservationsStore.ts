@@ -1,28 +1,43 @@
+let isHydrated = false;
 const inMemoryDeletedSet = new Set<string>();
 
 const isBrowser = (): boolean => typeof window !== 'undefined' && typeof localStorage !== 'undefined';
 export const DELETED_IDS_KEY = 'reservas_comunitarias_deleted_v1';
 
-/**
- * Retrieves the Set of reservation IDs marked as deleted or soft-deleted.
- * Works both in browser (with localStorage backing) and in-memory fallback.
- */
-export function getDeletedIds(): Set<string> {
-  const set = new Set<string>(inMemoryDeletedSet);
+function hydrateIfNeeded(): void {
+  if (isHydrated) return;
+  isHydrated = true;
   if (isBrowser()) {
     try {
       const raw = localStorage.getItem(DELETED_IDS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          parsed.forEach((id) => id && set.add(id));
+          parsed.forEach((id) => id && inMemoryDeletedSet.add(id));
         }
       }
     } catch (e) {
       console.warn('Error reading deleted IDs cache', e);
     }
   }
-  return set;
+}
+
+function persistToStorage(): void {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(inMemoryDeletedSet)));
+  } catch (e) {
+    console.warn('Error saving deleted IDs to localStorage', e);
+  }
+}
+
+/**
+ * Retrieves the Set of reservation IDs marked as deleted or soft-deleted.
+ * Works both in browser (with memory cache + localStorage backing) and in-memory fallback.
+ */
+export function getDeletedIds(): Set<string> {
+  hydrateIfNeeded();
+  return new Set<string>(inMemoryDeletedSet);
 }
 
 /**
@@ -30,14 +45,10 @@ export function getDeletedIds(): Set<string> {
  */
 export function recordDeletedId(id: string): void {
   if (!id) return;
-  inMemoryDeletedSet.add(id);
-  if (isBrowser()) {
-    try {
-      const set = getDeletedIds();
-      localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(set)));
-    } catch (e) {
-      console.warn('Error saving deleted ID', e);
-    }
+  hydrateIfNeeded();
+  if (!inMemoryDeletedSet.has(id)) {
+    inMemoryDeletedSet.add(id);
+    persistToStorage();
   }
 }
 
@@ -46,14 +57,16 @@ export function recordDeletedId(id: string): void {
  */
 export function recordDeletedIds(ids: string[]): void {
   if (!ids || !ids.length) return;
-  ids.forEach((id) => id && inMemoryDeletedSet.add(id));
-  if (isBrowser()) {
-    try {
-      const set = getDeletedIds();
-      localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(set)));
-    } catch (e) {
-      console.warn('Error saving deleted IDs', e);
+  hydrateIfNeeded();
+  let changed = false;
+  ids.forEach((id) => {
+    if (id && !inMemoryDeletedSet.has(id)) {
+      inMemoryDeletedSet.add(id);
+      changed = true;
     }
+  });
+  if (changed) {
+    persistToStorage();
   }
 }
 
@@ -62,15 +75,10 @@ export function recordDeletedIds(ids: string[]): void {
  */
 export function unrecordDeletedId(id: string): void {
   if (!id) return;
-  inMemoryDeletedSet.delete(id);
-  if (isBrowser()) {
-    try {
-      const set = getDeletedIds();
-      set.delete(id);
-      localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(set)));
-    } catch (e) {
-      console.warn('Error removing deleted ID', e);
-    }
+  hydrateIfNeeded();
+  if (inMemoryDeletedSet.has(id)) {
+    inMemoryDeletedSet.delete(id);
+    persistToStorage();
   }
 }
 
@@ -79,14 +87,16 @@ export function unrecordDeletedId(id: string): void {
  */
 export function unrecordDeletedIds(ids: string[]): void {
   if (!ids || !ids.length) return;
-  ids.forEach((id) => id && inMemoryDeletedSet.delete(id));
-  if (isBrowser()) {
-    try {
-      const set = getDeletedIds();
-      ids.forEach((id) => id && set.delete(id));
-      localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(set)));
-    } catch (e) {
-      console.warn('Error removing deleted IDs batch', e);
+  hydrateIfNeeded();
+  let changed = false;
+  ids.forEach((id) => {
+    if (id && inMemoryDeletedSet.has(id)) {
+      inMemoryDeletedSet.delete(id);
+      changed = true;
     }
+  });
+  if (changed) {
+    persistToStorage();
   }
 }
+

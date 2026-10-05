@@ -70,7 +70,7 @@ const MONTH_NAMES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ];
 
-export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
+const MobileAgendaViewComponent: React.FC<MobileAgendaViewProps> = ({
   reservations,
   allReservations,
   conflictReservationIds,
@@ -972,3 +972,6 @@ export const MobileAgendaView: React.FC<MobileAgendaViewProps> = ({
     </div>
   );
 };
+
+export const MobileAgendaView = React.memo(MobileAgendaViewComponent);
+
