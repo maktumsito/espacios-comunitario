@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SpaceRating, Reservation } from '../types';
 import { isWeekend, isBirthdayReservation, isRatingAllowedForReservation } from '../services/ratingService';
 import { BaseModal } from './common/BaseModal';
@@ -22,7 +22,7 @@ interface SpaceRatingModalProps {
   reservation: Reservation | null;
   existingRating?: SpaceRating | null;
   currentUserName?: string;
-  onSaveRating: (rating: SpaceRating) => void;
+  onSaveRating: (rating: SpaceRating) => void | Promise<void>;
 }
 
 export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
@@ -48,6 +48,9 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
   const [minutosExceso, setMinutosExceso] = useState<number>(15);
   const [observaciones, setObservaciones] = useState<string>('');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const savingRef=useRef(false);
+  const [isSaving,setIsSaving]=useState(false);
+  const closeWhenReady=()=>{if(!savingRef.current)onClose();};
 
   useEffect(() => {
     if (reservation) {
@@ -93,8 +96,9 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
   const eligibility = isRatingAllowedForReservation(reservation);
   const isFutureOrBlocked = !existingRating && !eligibility.allowed;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(savingRef.current)return;
     setValidationError(null);
 
     if (isFutureOrBlocked) {
@@ -128,7 +132,7 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
     }
 
     const newRating: SpaceRating = {
-      id: existingRating?.id || `RAT_${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+      id: existingRating?.id || reservation.id,
       reservationId: reservation.id,
       fecha: reservation.fecha,
       espacio: reservation.espacio,
@@ -153,8 +157,10 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
       createdBy: auxiliarName.trim()
     };
 
-    onSaveRating(newRating);
-    onClose();
+    savingRef.current=true;setIsSaving(true);setValidationError(null);
+    try { await onSaveRating(newRating); onClose(); }
+    catch(error:any) {setValidationError(error?.message || 'No se pudo guardar. Tus datos se conservaron para reintentar.');}
+    finally {savingRef.current=false;setIsSaving(false);}
   };
 
   const StarRatingInput = ({
@@ -249,7 +255,7 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
       </div>
 
       <button
-        onClick={onClose}
+        onClick={closeWhenReady}
         className="min-h-[44px] min-w-[44px] p-2 text-blue-200 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer flex items-center justify-center"
         aria-label="Cerrar modal"
       >
@@ -261,7 +267,7 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
   return (
     <BaseModal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={closeWhenReady}
       maxWidth="xl"
       layer="nested"
       customHeader={headerElement}
@@ -269,6 +275,7 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
       bodyClassName="p-0 overflow-hidden"
     >
       <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+        <fieldset disabled={isSaving} className="contents">
         {/* Validation Error Banner */}
         {validationError && (
           <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex items-start space-x-2.5 animate-fadeIn">
@@ -516,7 +523,7 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
           <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-200">
             <button
               type="button"
-              onClick={onClose}
+              onClick={closeWhenReady}
               className="min-h-[44px] px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold shadow-2xs transition cursor-pointer"
             >
               Cancelar
@@ -531,7 +538,7 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
               if (!comportamiento) missingCriteria.push('Normas');
 
               const isAllCriteriaRated = missingCriteria.length === 0;
-              const isSaveDisabled = isFutureOrBlocked || !isAllCriteriaRated || !auxiliarName.trim();
+              const isSaveDisabled = isSaving || isFutureOrBlocked || !isAllCriteriaRated || !auxiliarName.trim();
 
               return (
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -574,6 +581,7 @@ export const SpaceRatingModal: React.FC<SpaceRatingModalProps> = ({
               );
             })()}
           </div>
+        </fieldset>
         </form>
     </BaseModal>
   );

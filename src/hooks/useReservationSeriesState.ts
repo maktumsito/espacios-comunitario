@@ -205,14 +205,14 @@ export function useReservationSeriesState({
   const excludeReservationIds = useMemo(() => {
     if (isDuplicating || !editingReservation) return [];
     const ids: string[] = [];
-    if (editingReservation.id) ids.push(editingReservation.id);
-    if (formData.id && formData.id !== editingReservation.id) ids.push(formData.id);
+    if (!isEditingRecurring && editingReservation.id) ids.push(editingReservation.id);
+    if (!isEditingRecurring && formData.id && formData.id !== editingReservation.id) ids.push(formData.id);
 
     // If editing recurring series, exclude reservations in current scope or full series
     if (isEditingRecurring) {
       if (updateScope === 'single' && bookingMode === 'single') {
         ids.push(editingReservation.id);
-      } else if (updateScope === 'series' || bookingMode === 'pattern' || bookingMode === 'specific') {
+      } else if (updateScope === 'series') {
         // Exclude all series members so none conflict with their own expanded dates
         seriesReservations.forEach((r) => ids.push(r.id));
       } else {
@@ -230,7 +230,7 @@ export function useReservationSeriesState({
       seriesReservations[0]?.serieRecurrente ||
       seriesReservations[0]?.recurrenteId;
 
-    if (isEditingRecurring && (updateScope === 'series' || bookingMode === 'pattern' || bookingMode === 'specific')) {
+    if (isEditingRecurring && updateScope === 'series') {
       return sId || undefined;
     }
     return undefined;

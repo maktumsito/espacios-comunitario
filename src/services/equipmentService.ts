@@ -134,7 +134,7 @@ export function getStoredEquipment(): EquipmentItem[] {
   return DEFAULT_EQUIPMENT_ITEMS;
 }
 
-export function saveEquipmentItem(item: EquipmentItem): EquipmentItem[] {
+export async function saveEquipmentItem(item: EquipmentItem): Promise<EquipmentItem[]> {
   const current = getStoredEquipment();
   const index = current.findIndex(e => e.id === item.id);
   let updated: EquipmentItem[];
@@ -144,6 +144,7 @@ export function saveEquipmentItem(item: EquipmentItem): EquipmentItem[] {
   } else {
     updated = [...current, { ...item, isCustom: true }];
   }
+  await saveEquipmentDocToFirestore(updated);
   try {
     if (isBrowser) {
       localStorage.setItem(EQUIPMENT_STORAGE_KEY, JSON.stringify(updated));
@@ -152,13 +153,13 @@ export function saveEquipmentItem(item: EquipmentItem): EquipmentItem[] {
   } catch (e) {
     console.error('Error saving equipment to localStorage:', e);
   }
-  saveEquipmentDocToFirestore(updated);
   return updated;
 }
 
-export function deleteEquipmentItem(id: string): EquipmentItem[] {
+export async function deleteEquipmentItem(id: string): Promise<EquipmentItem[]> {
   const current = getStoredEquipment();
   const updated = current.filter(e => e.id !== id);
+  await saveEquipmentDocToFirestore(updated);
   try {
     if (isBrowser) {
       localStorage.setItem(EQUIPMENT_STORAGE_KEY, JSON.stringify(updated));
@@ -167,16 +168,15 @@ export function deleteEquipmentItem(id: string): EquipmentItem[] {
   } catch (e) {
     console.error('Error deleting equipment from localStorage:', e);
   }
-  saveEquipmentDocToFirestore(updated);
   return updated;
 }
 
-export function resetEquipmentToDefaults(): EquipmentItem[] {
+export async function resetEquipmentToDefaults(): Promise<EquipmentItem[]> {
+  await saveEquipmentDocToFirestore(DEFAULT_EQUIPMENT_ITEMS);
   if (isBrowser) {
     localStorage.removeItem(EQUIPMENT_STORAGE_KEY);
     window.dispatchEvent(new CustomEvent('app_equipment_changed', { detail: DEFAULT_EQUIPMENT_ITEMS }));
   }
-  saveEquipmentDocToFirestore(DEFAULT_EQUIPMENT_ITEMS);
   return DEFAULT_EQUIPMENT_ITEMS;
 }
 
@@ -222,12 +222,12 @@ export function subscribeToEquipment(
 
 async function saveEquipmentDocToFirestore(items: EquipmentItem[]) {
   const db = getDb();
-  if (!db) return;
+  if (!db) throw new Error("No hay conexión con la base de datos.");
   try {
     const docRef = doc(db, CONFIG_COLLECTION, 'equipamiento');
     await setDoc(docRef, { items, updatedAt: new Date().toISOString() }, { merge: true });
   } catch (err) {
-    console.warn('Error syncing equipment to Firestore:', err);
+    throw err;
   }
 }
 

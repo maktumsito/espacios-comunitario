@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Suspense } from 'react';
 import { SpaceInfo, LoanType, ActivityTypeItem, EquipmentItem, Reservation, SpaceBlock, SpaceRating, ApplicantSummary } from '../types';
 import {
   UserAccount,
@@ -103,30 +103,30 @@ interface AdminViewProps {
   spaceBlocks?: SpaceBlock[];
   ratings?: SpaceRating[];
   initialTab?: AdminTab;
-  onTabChange?: (tab: AdminTab) => void;
-  onLogout?: () => void;
-  onSaveSpace: (space: SpaceInfo) => void;
-  onDeleteSpace: (id: string) => void;
-  onSaveLoanType: (loan: LoanType) => void;
-  onDeleteLoanType: (id: string) => void;
-  onSaveActivityType: (activity: ActivityTypeItem) => void;
-  onDeleteActivityType: (id: string) => void;
-  onSaveEquipment?: (item: EquipmentItem) => void;
-  onDeleteEquipment?: (id: string) => void;
-  onResetEquipment?: () => void;
-  onSaveUser?: (user: UserAccount, originalUsername?: string) => void;
-  onDeleteUser?: (username: string) => { success: boolean; message?: string };
-  onResetUsers?: () => void;
-  onResetDefaults: () => void;
-  onReorderSpaces?: (spaces: SpaceInfo[]) => void;
+  onTabChange?: (tab: AdminTab) => void | Promise<void>;
+  onLogout?: () => void | Promise<void>;
+  onSaveSpace: (space: SpaceInfo) => void | Promise<void>;
+  onDeleteSpace: (id: string) => void | Promise<void>;
+  onSaveLoanType: (loan: LoanType) => void | Promise<void>;
+  onDeleteLoanType: (id: string) => void | Promise<void>;
+  onSaveActivityType: (activity: ActivityTypeItem) => void | Promise<void>;
+  onDeleteActivityType: (id: string) => void | Promise<void>;
+  onSaveEquipment?: (item: EquipmentItem) => void | Promise<void>;
+  onDeleteEquipment?: (id: string) => void | Promise<void>;
+  onResetEquipment?: () => void | Promise<void>;
+  onSaveUser?: (user: UserAccount, originalUsername?: string) => void | Promise<void>;
+  onDeleteUser?: (username: string) => { success: boolean; message?: string } | Promise<{ success: boolean; message?: string }>;
+  onResetUsers?: () => void | Promise<void>;
+  onResetDefaults: () => void | Promise<void>;
+  onReorderSpaces?: (spaces: SpaceInfo[]) => void | Promise<void>;
   onDeleteAllHolidays?: () => Promise<{ deletedCount: number }>;
-  onOpenChangePassword?: (targetUser?: AuthUser) => void;
-  onOpenImportExport?: () => void;
+  onOpenChangePassword?: (targetUser?: AuthUser) => void | Promise<void>;
+  onOpenImportExport?: () => void | Promise<void>;
   onSaveBlock?: (block: SpaceBlock) => Promise<void>;
   onDeleteBlock?: (id: string) => Promise<void>;
-  onSelectReservation?: (reservation: Reservation) => void;
-  onNewReservationForApplicant?: (applicant: ApplicantSummary) => void;
-  onOpenGmailDispatch?: (date?: string) => void;
+  onSelectReservation?: (reservation: Reservation) => void | Promise<void>;
+  onNewReservationForApplicant?: (applicant: ApplicantSummary) => void | Promise<void>;
+  onOpenGmailDispatch?: (date?: string) => void | Promise<void>;
   onSaveReservation?: (
     reserva: Reservation,
     generateSeries?: boolean,
@@ -134,7 +134,7 @@ interface AdminViewProps {
     updateWholeSeries?: boolean
   ) => Promise<boolean>;
   onDeleteReservation?: (id: string, seriesId?: string) => Promise<void>;
-  onEditReservation?: (reservation: Reservation) => void;
+  onEditReservation?: (reservation: Reservation) => void | Promise<void>;
 }
 
 const PRESET_COLORS = [
@@ -247,6 +247,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onDeleteReservation,
   onEditReservation
 }) => {
+  const adminSavingRef = useRef(false);
+  const [adminSaving, setAdminSaving] = useState(false);
+  const [adminError, setAdminError] = useState('');
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
 
   useEffect(() => {
@@ -272,7 +275,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     confirmLabel?: string;
     cancelLabel?: string;
     hideCancel?: boolean;
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
   } | null>(null);
 
   const [equipmentFormError, setEquipmentFormError] = useState('');
@@ -342,7 +345,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setIsEquipmentFormOpen(true);
   };
 
-  const handleSaveEquipmentSubmit = (e: React.FormEvent) => {
+  const handleSaveEquipmentSubmit = async (e: React.FormEvent) => {
+    if (adminSavingRef.current) { e.preventDefault(); return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     e.preventDefault();
     setEquipmentFormError('');
     if (!equipmentForm.name.trim()) {
@@ -359,34 +368,52 @@ export const AdminView: React.FC<AdminViewProps> = ({
     };
 
     if (onSaveEquipment) {
-      onSaveEquipment(finalItem);
+      await onSaveEquipment(finalItem);
     } else {
-      const updated = saveEquipmentItem(finalItem);
+      const updated = await saveEquipmentItem(finalItem);
       setLocalEquipment(updated);
     }
     setIsEquipmentFormOpen(false);
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
-  const handleDeleteEquipmentConfirm = () => {
+  const handleDeleteEquipmentConfirm = async () => {
+    if (adminSavingRef.current) { return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     if (!equipmentToDelete) return;
     if (onDeleteEquipment) {
-      onDeleteEquipment(equipmentToDelete.id);
+      await onDeleteEquipment(equipmentToDelete.id);
     } else {
-      const updated = deleteEquipmentItem(equipmentToDelete.id);
+      const updated = await deleteEquipmentItem(equipmentToDelete.id);
       setLocalEquipment(updated);
     }
     setEquipmentToDelete(null);
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
-  const handleQuickStockChange = (item: EquipmentItem, delta: number) => {
+  const handleQuickStockChange = async (item: EquipmentItem, delta: number) => {
+    if (adminSavingRef.current) { return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     const newQty = Math.max(0, item.totalQuantity + delta);
     const updated: EquipmentItem = { ...item, totalQuantity: newQty };
     if (onSaveEquipment) {
-      onSaveEquipment(updated);
+      await onSaveEquipment(updated);
     } else {
-      const res = saveEquipmentItem(updated);
+      const res = await saveEquipmentItem(updated);
       setLocalEquipment(res);
     }
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
   const filteredEquipment = useMemo(() => {
@@ -524,7 +551,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setDragOverSpaceIndex(index);
   };
 
-  const handleSpaceDrop = (e: React.DragEvent, targetIndex: number) => {
+  const handleSpaceDrop = async (e: React.DragEvent, targetIndex: number) => {
+    if (adminSavingRef.current) { e.preventDefault(); return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     e.preventDefault();
     if (!allowSpaceReorder || draggedSpaceIndex === null || draggedSpaceIndex === targetIndex || !onReorderSpaces) {
       setDraggedSpaceIndex(null);
@@ -536,12 +569,20 @@ export const AdminView: React.FC<AdminViewProps> = ({
     const [moved] = reordered.splice(draggedSpaceIndex, 1);
     reordered.splice(targetIndex, 0, moved);
 
-    onReorderSpaces(reordered);
+    await onReorderSpaces(reordered);
     setDraggedSpaceIndex(null);
     setDragOverSpaceIndex(null);
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
-  const handleMoveSpace = (index: number, direction: 'up' | 'down') => {
+  const handleMoveSpace = async (index: number, direction: 'up' | 'down') => {
+    if (adminSavingRef.current) { return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     if (!allowSpaceReorder || !onReorderSpaces) return;
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= spaces.length) return;
@@ -549,7 +590,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
     const reordered = [...spaces];
     const [moved] = reordered.splice(index, 1);
     reordered.splice(targetIndex, 0, moved);
-    onReorderSpaces(reordered);
+    await onReorderSpaces(reordered);
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
   // Open Space Form
@@ -572,7 +615,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setIsSpaceFormOpen(true);
   };
 
-  const handleSaveSpaceSubmit = (e: React.FormEvent) => {
+  const handleSaveSpaceSubmit = async (e: React.FormEvent) => {
+    if (adminSavingRef.current) { e.preventDefault(); return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     e.preventDefault();
     setSpaceFormError('');
     if (!spaceForm.name.trim()) {
@@ -587,8 +636,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
       description: spaceForm.description || `Espacio asignado para actividades de ${spaceForm.category.toLowerCase()}.`,
       isCustom: true
     };
-    onSaveSpace(finalSpace);
+    await onSaveSpace(finalSpace);
     setIsSpaceFormOpen(false);
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
   // Open Loan Type Form
@@ -611,7 +662,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setIsLoanFormOpen(true);
   };
 
-  const handleSaveLoanSubmit = (e: React.FormEvent) => {
+  const handleSaveLoanSubmit = async (e: React.FormEvent) => {
+    if (adminSavingRef.current) { e.preventDefault(); return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     e.preventDefault();
     setLoanFormError('');
     if (!loanForm.name.trim()) {
@@ -625,8 +682,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
       defaultDurationMinutes: Number(loanForm.defaultDurationMinutes) || 120,
       isCustom: true
     };
-    onSaveLoanType(finalLoan);
+    await onSaveLoanType(finalLoan);
     setIsLoanFormOpen(false);
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
   // Open Activity Type Form
@@ -648,7 +707,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setIsActivityFormOpen(true);
   };
 
-  const handleSaveActivitySubmit = (e: React.FormEvent) => {
+  const handleSaveActivitySubmit = async (e: React.FormEvent) => {
+    if (adminSavingRef.current) { e.preventDefault(); return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     e.preventDefault();
     setActivityFormError('');
     if (!activityForm.name.trim()) {
@@ -661,9 +726,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
       name: activityForm.name.trim().toUpperCase(),
       isCustom: true
     };
-    onSaveActivityType(finalActivity);
+    await onSaveActivityType(finalActivity);
     if (onSaveLoanType) {
-      onSaveLoanType({
+      await onSaveLoanType({
         id: finalActivity.id,
         name: finalActivity.name,
         category: finalActivity.category,
@@ -674,6 +739,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
       });
     }
     setIsActivityFormOpen(false);
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
   // ----------------------------------------------------
@@ -744,7 +811,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
   };
 
-  const handleSaveUserSubmit = (e: React.FormEvent) => {
+  const handleSaveUserSubmit = async (e: React.FormEvent) => {
+    if (adminSavingRef.current) { e.preventDefault(); return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     e.preventDefault();
     if (!isCoordinatorOrAdmin(currentUser)) {
       setUserFormError('Permiso denegado: Solo usuarios Administradores o Coordinadores pueden crear o modificar usuarios.');
@@ -802,7 +875,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     };
 
     if (onSaveUser) {
-      onSaveUser(finalUser, editingUsername || undefined);
+      await onSaveUser(finalUser, editingUsername || undefined);
     } else {
       // Local fallback
       setLocalUsers((prev) => {
@@ -817,16 +890,24 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
 
     setIsUserFormOpen(false);
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
   // ----------------------------------------------------
   // CRISTIAN SHUTE PERMISSION TOGGLE HANDLERS
   // ----------------------------------------------------
-  const handleToggleUserPermission = (
+  const handleToggleUserPermission = async (
     targetUser: UserAccount,
     permKey: 'canCreateReservations' | 'canEditReservations' | 'canDeleteReservations',
     newValue: boolean
   ) => {
+    if (adminSavingRef.current) { return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     if (!isCristianShute(currentUser)) {
       setConfirmDialog({
         isOpen: true,
@@ -861,7 +942,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     };
 
     if (onSaveUser) {
-      onSaveUser(updatedUser, targetUser.username);
+      await onSaveUser(updatedUser, targetUser.username);
     } else {
       setLocalUsers((prev) => {
         const idx = prev.findIndex((u) => u.username.toLowerCase() === targetUser.username.toLowerCase());
@@ -884,14 +965,22 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setTimeout(() => {
       setPermissionSuccessToast(null);
     }, 4000);
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
-  const handleBulkSetPermissions = (mode: 'all_enabled' | 'create_only' | 'view_only') => {
+  const handleBulkSetPermissions = async (mode: 'all_enabled' | 'create_only' | 'view_only') => {
+    if (adminSavingRef.current) { return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     if (!isCristianShute(currentUser)) return;
 
     let targetCount = 0;
-    effectiveUsers.forEach((usr) => {
-      if (isMasterAdmin(usr) || isCristianShute(usr)) return;
+    for (const usr of effectiveUsers) {
+      if (isMasterAdmin(usr) || isCristianShute(usr)) continue;
 
       const newPerms = {
         canCreateReservations: mode === 'all_enabled' || mode === 'create_only',
@@ -906,9 +995,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
       targetCount++;
       if (onSaveUser) {
-        onSaveUser(updated, usr.username);
+        await onSaveUser(updated, usr.username);
       }
-    });
+    }
 
     const modeLabels = {
       all_enabled: 'Total (Crear, Editar y Eliminar habilitados para todos)',
@@ -920,9 +1009,17 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setTimeout(() => {
       setPermissionSuccessToast(null);
     }, 4500);
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
-  const handleDeleteUserConfirm = () => {
+  const handleDeleteUserConfirm = async () => {
+    if (adminSavingRef.current) { return; }
+    adminSavingRef.current = true;
+    setAdminSaving(true);
+    setAdminError('');
+    try {
+
     if (!userToDelete) return;
     if (!isCoordinatorOrAdmin(currentUser)) {
       setUserToDelete(null);
@@ -939,7 +1036,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
 
     if (onDeleteUser) {
-      const res = onDeleteUser(userToDelete.username);
+      const res = await onDeleteUser(userToDelete.username);
       if (!res.success) {
         setUserToDelete(null);
         setConfirmDialog({
@@ -959,6 +1056,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
 
     setUserToDelete(null);
+    } catch (err: any) { setAdminError(err?.message || 'No se pudo guardar. Tus datos se conservaron.'); }
+    finally { adminSavingRef.current = false; setAdminSaving(false); }
   };
 
   const handleTogglePasswordVisibility = (username: string) => {
@@ -1041,6 +1140,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   return (
     <div className="w-full max-w-[1600px] mx-auto p-3 sm:p-6 space-y-6">
+      {adminSaving && <p role="status" className="text-sm text-blue-700">Guardando y esperando confirmación…</p>}
+      {adminError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-800">{adminError}</p>}
       {/* Header Banner */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-1.5">
@@ -1113,9 +1214,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
                   message: '¿Deseas restaurar los espacios, préstamos, actividades y usuarios a sus valores predeterminados?',
                   variant: 'warning',
                   confirmLabel: 'Restaurar Valores',
-                  onConfirm: () => {
-                    onResetDefaults();
-                    if (onResetUsers) onResetUsers();
+                  onConfirm: async () => {
+                    await onResetDefaults();
+                    if (onResetUsers) await onResetUsers();
                     setConfirmDialog(null);
                   }
                 });
@@ -1413,8 +1514,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
                               message: `¿Estás seguro de que deseas eliminar el espacio "${space.name}"?`,
                               variant: 'danger',
                               confirmLabel: 'Eliminar Espacio',
-                              onConfirm: () => {
-                                onDeleteSpace(space.id);
+                              onConfirm: async () => {
+                                await onDeleteSpace(space.id);
                                 setConfirmDialog(null);
                               }
                             });
@@ -1505,8 +1606,8 @@ export const AdminView: React.FC<AdminViewProps> = ({
                             message: `¿Estás seguro de que deseas eliminar la actividad "${act.name}"?`,
                             variant: 'danger',
                             confirmLabel: 'Eliminar Actividad',
-                            onConfirm: () => {
-                              onDeleteActivityType(act.id);
+                            onConfirm: async () => {
+                              await onDeleteActivityType(act.id);
                               setConfirmDialog(null);
                             }
                           });
@@ -2041,11 +2142,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
                       message: '¿Deseas restaurar el catálogo de equipamiento a los valores predeterminados?',
                       variant: 'warning',
                       confirmLabel: 'Restablecer Catálogo',
-                      onConfirm: () => {
+                      onConfirm: async () => {
                         if (onResetEquipment) {
-                          onResetEquipment();
+                          await onResetEquipment();
                         } else {
-                          const def = resetEquipmentToDefaults();
+                          const def = await resetEquipmentToDefaults();
                           setLocalEquipment(def);
                         }
                         setConfirmDialog(null);

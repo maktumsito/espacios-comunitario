@@ -33,6 +33,17 @@ export function getReservationsFuse(reservations: Reservation[]): Fuse<Reservati
   return cachedFuseInstance;
 }
 
+const normalizedRows = new WeakMap<Reservation, { source: string[]; normalized: string[] }>();
+const normalizeText = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+function searchFields(r: Reservation): string[] {
+  const source = [r.rut || '', r.id || '', r.responsable || '', r.tipoActividad || '', r.espacio || '', r.descripcion || '', r.fecha || ''];
+  const cached = normalizedRows.get(r);
+  if (cached && source.every((value,i)=>value===cached.source[i])) return cached.normalized;
+  const normalized = [source[0].replace(/[^0-9kK]/g,'').toLowerCase(), source[1].toLowerCase(), ...source.slice(2,6).map(normalizeText), source[6].trim().toLowerCase()];
+  normalizedRows.set(r, { source, normalized });
+  return normalized;
+}
+
 /**
  * Searches a list of reservations prioritizing exact and substring matches,
  * with Fuse.js fuzzy matching as fallback for typo tolerance.
@@ -54,13 +65,7 @@ export function fuzzySearchReservations(
   const exactMatchedIds = new Set<string>();
 
   for (const r of reservations) {
-    const cleanR = (r.rut || '').replace(/[^0-9kK]/g, '').toLowerCase();
-    const normId = (r.id || '').toLowerCase();
-    const normResp = (r.responsable || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const normTipo = (r.tipoActividad || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const normEsp = (r.espacio || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const normDesc = (r.descripcion || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const normFecha = (r.fecha || '').trim().toLowerCase();
+    const [cleanR, normId, normResp, normTipo, normEsp, normDesc, normFecha] = searchFields(r);
 
     // Priority 1: Exact ID match or exact RUT match or exact Name/Activity/Fecha match
     if (

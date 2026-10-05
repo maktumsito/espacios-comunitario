@@ -1,7 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Reservation, CustomScheduleSlot } from '../types';
+import { Reservation, CustomScheduleSlot, UpdateScope } from '../types';
+
+export interface DraftEditScope {
+  updateScope: UpdateScope;
+  rangeStartDate: string;
+  rangeEndDate: string;
+  selectedOccurrenceIds: string[];
+}
+
+export interface DraftFormSettings {
+  holidayOverrideKey: string;
+  extendedAuthKey: string;
+  includeHolidaysInSeries: boolean;
+  generateFullSeries: boolean;
+}
 
 export interface AutosavedReservationDraft {
   version: number;
@@ -27,6 +41,8 @@ export interface AutosavedReservationDraft {
   singleSecondStartTime: string;
   singleSecondEndTime: string;
   descargarCartaAlCrear?: boolean;
+  editScope?: DraftEditScope;
+  settings?: DraftFormSettings;
 }
 
 export interface ActiveDraftSummary {
@@ -44,6 +60,7 @@ export const ACTIVE_CONTEXT_KEY = 'ccd_reservation_draft_active_context';
 const MAX_DRAFT_AGE_MS = 48 * 60 * 60 * 1000; // 48 horas
 
 export function getDraftStorageKey(editingReservation?: Reservation | null, isDuplicating?: boolean): string {
+  if (editingReservation?.id && isDuplicating) return `${STORAGE_PREFIX}duplicate_${editingReservation.id}`;
   if (editingReservation && !isDuplicating && editingReservation.id) {
     return `${STORAGE_PREFIX}edit_${editingReservation.id}`;
   }
@@ -157,6 +174,8 @@ export function clearAllReservationDrafts(): void {
 }
 
 interface UseReservationAutosaveOptions {
+  editScope?: DraftEditScope;
+  settings?: DraftFormSettings;
   isOpen: boolean;
   editingReservation?: Reservation | null;
   isDuplicating?: boolean;
@@ -209,7 +228,9 @@ export function useReservationAutosave({
   singleSecondStartTime,
   singleSecondEndTime,
   descargarCartaAlCrear,
-  onRestore
+  onRestore,
+  editScope,
+  settings
 }: UseReservationAutosaveOptions): UseReservationAutosaveReturn {
   const storageKey = getDraftStorageKey(editingReservation, isDuplicating);
   const isEditing = Boolean(editingReservation && !isDuplicating);
@@ -240,7 +261,9 @@ export function useReservationAutosave({
     storageKey,
     isEditing,
     isDuplicating,
-    targetId: editingReservation?.id
+    targetId: editingReservation?.id,
+    editScope,
+    settings
   });
 
   useEffect(() => {
@@ -263,7 +286,9 @@ export function useReservationAutosave({
       storageKey,
       isEditing,
       isDuplicating,
-      targetId: editingReservation?.id
+      targetId: editingReservation?.id,
+      editScope,
+      settings
     };
   }, [
     formData,
@@ -284,12 +309,15 @@ export function useReservationAutosave({
     storageKey,
     isEditing,
     isDuplicating,
-    editingReservation
+    editingReservation,
+    editScope,
+    settings
   ]);
 
   // Track initial snapshot when modal opens to detect if user has modified anything
   const initialSnapshotRef = useRef<string | null>(null);
-  const isInitialMountForModalRef = useRef<boolean>(true);
+  const clearedRef = useRef(false);
+  const lastPersistedSnapshotRef = useRef<string | null>(null);
 
   // When modal opens, inspect if there is an existing draft to restore
   useEffect(() => {
@@ -297,7 +325,8 @@ export function useReservationAutosave({
       setHasDraft(false);
       setDraftData(null);
       initialSnapshotRef.current = null;
-      isInitialMountForModalRef.current = true;
+      clearedRef.current = false;
+      lastPersistedSnapshotRef.current = null;
       return;
     }
 
@@ -323,33 +352,23 @@ export function useReservationAutosave({
       }
     }
 
-    // Capture initial state as baseline after short delay so prefill values settle
+    clearedRef.current = false;
+    lastPersistedSnapshotRef.current = null;
+    // The next task runs after the parent's prefill effects have settled.
     const timer = setTimeout(() => {
-      initialSnapshotRef.current = JSON.stringify({
-        resp: formData.responsable || '',
-        desc: formData.descripcion || '',
-        rut: formData.rut || '',
-        tel: formData.telefonoContacto || '',
-        email: formData.emailContacto || '',
-        act: formData.tipoActividad || '',
-        prest: formData.tipoPrestamo || '',
-        esp: formData.espacio || '',
-        fec: formData.fecha || '',
-        hi: formData.horaInicio || '',
-        hf: formData.horaFin || '',
-        equip: formData.equipamientoSolicitado || []
-      });
-      isInitialMountForModalRef.current = false;
-    }, 400);
-
+      initialSnapshotRef.current = JSON.stringify(latestStateRef.current);
+    }, 0);
     return () => clearTimeout(timer);
+
   }, [isOpen, storageKey]);
 
   // Method to save state immediately
   const persistDraftImmediately = useCallback(() => {
     if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
     const current = latestStateRef.current;
-    if (!current) return;
+    if (!current || clearedRef.current) return;
+    const snapshot = JSON.stringify(current);
+    if (snapshot === initialSnapshotRef.current || snapshot === lastPersistedSnapshotRef.current) return;
 
     // Check if there is meaningful data to save
     const f = current.formData;
@@ -394,12 +413,15 @@ export function useReservationAutosave({
       singleSecondSpace: current.singleSecondSpace,
       singleSecondStartTime: current.singleSecondStartTime,
       singleSecondEndTime: current.singleSecondEndTime,
-      descargarCartaAlCrear: current.descargarCartaAlCrear
+      descargarCartaAlCrear: current.descargarCartaAlCrear,
+      editScope: current.editScope,
+      settings: current.settings
     };
 
     try {
       localStorage.setItem(current.storageKey, JSON.stringify(draft));
       localStorage.setItem(ACTIVE_CONTEXT_KEY, current.storageKey);
+      lastPersistedSnapshotRef.current = snapshot;
       setLastSavedAt(draft.savedAt);
     } catch (err) {
       console.warn('Error al guardar borrador en localStorage:', err);
@@ -408,29 +430,8 @@ export function useReservationAutosave({
 
   // Debounced autosave effect while user is typing or changing fields
   useEffect(() => {
-    if (!isOpen || isInitialMountForModalRef.current) return;
-
-    // Don't autosave if state matches the initial snapshot exactly
-    if (initialSnapshotRef.current) {
-      const currentSnapshot = JSON.stringify({
-        resp: formData.responsable || '',
-        desc: formData.descripcion || '',
-        rut: formData.rut || '',
-        tel: formData.telefonoContacto || '',
-        email: formData.emailContacto || '',
-        act: formData.tipoActividad || '',
-        prest: formData.tipoPrestamo || '',
-        esp: formData.espacio || '',
-        fec: formData.fecha || '',
-        hi: formData.horaInicio || '',
-        hf: formData.horaFin || '',
-        equip: formData.equipamientoSolicitado || []
-      });
-      if (currentSnapshot === initialSnapshotRef.current) {
-        return;
-      }
-    }
-
+    if (!isOpen || clearedRef.current) return;
+    // Compare the whole state at persistence time, after debounce, not on every keystroke.
     setIsSaving(true);
     const handler = setTimeout(() => {
       persistDraftImmediately();
@@ -455,7 +456,9 @@ export function useReservationAutosave({
     singleSecondStartTime,
     singleSecondEndTime,
     descargarCartaAlCrear,
-    persistDraftImmediately
+    persistDraftImmediately,
+    editScope,
+    settings
   ]);
 
   // Window beforeunload listener to flush state to localStorage immediately upon accidental reload/navigation
@@ -488,6 +491,8 @@ export function useReservationAutosave({
 
   // Action on successful submission: clear draft and active context
   const clearDraft = useCallback(() => {
+    clearedRef.current = true;
+    setIsSaving(false);
     removeStoredDraft(storageKey);
     setHasDraft(false);
     setDraftData(null);

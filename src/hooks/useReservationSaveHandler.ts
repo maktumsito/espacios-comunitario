@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { MutableRefObject } from 'react';
 import { format } from 'date-fns';
 import {
@@ -9,7 +10,7 @@ import {
 } from '../types';
 import { normalizeSpaceName } from '../data/spacesData';
 import { checkSingleConflict, timeToMinutes, isReservationActiveForAvailability } from '../utils/conflictDetector';
-import { getDeletedIds } from '../services/reservationService';
+import { getDeletedIds, getLocalCache, saveReservation } from '../services/reservationService';
 import { formatDateDDMMYYYY, getDayOfWeekFromDateString } from '../utils/dateUtils';
 import { checkSpaceBlocked } from '../services/spaceBlockService';
 import {
@@ -75,6 +76,7 @@ interface UseReservationSaveHandlerProps {
   };
   includeHolidaysInSeries: boolean;
   isHolidayAuthorized: boolean;
+  holidayOverrideKey: string;
   patternHolidayAnalysis: {
     validDates: readonly string[] | string[];
     omittedHolidays: ReadonlyArray<{ date: string; holiday: { name: string } }>;
@@ -110,7 +112,8 @@ interface UseReservationSaveHandlerProps {
     isSeries?: boolean,
     seriesDates?: (string | SeriesItemSlot)[],
     isBatchUpdate?: boolean,
-    batchInfo?: BatchUpdateInfo
+    batchInfo?: BatchUpdateInfo,
+    allowConflictOverride?: boolean
   ) => void | boolean | Promise<void | boolean>;
   clearDraft: () => void;
   onClose: () => void;
@@ -153,6 +156,7 @@ export function useReservationSaveHandler({
   specificHolidayAnalysis,
   includeHolidaysInSeries,
   isHolidayAuthorized,
+  holidayOverrideKey,
   patternHolidayAnalysis,
   generatedDates,
   recurrenceStartDate,
@@ -192,6 +196,7 @@ export function useReservationSaveHandler({
     if (isSubmittingRef.current || isSubmitting) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
+    try {
 
     const abortWithFeedback = (msg: string, type: 'error' | 'warning' = 'error') => {
       showFormFeedback(msg, type);
@@ -689,7 +694,7 @@ export function useReservationSaveHandler({
           .join(',')
       : '';
 
-    const seriesId = `SER_${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+    const seriesId = `SER_${effectiveFormData.id || editingReservation?.id || 'draft'}`.slice(0,128);
 
     // Build explicit payload for all dates with individual space and schedule
     let finalSeriesPayload: (string | SeriesItemSlot)[] = finalDates;
@@ -889,25 +894,21 @@ export function useReservationSaveHandler({
         (isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) ||
           Boolean(effectiveFormData.requiereCartaCompromiso)) &&
         descargarCartaAlCrear,
-      cartaCompromisoDescargada:
-        (isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) ||
-          Boolean(effectiveFormData.requiereCartaCompromiso)) &&
-        descargarCartaAlCrear
-          ? true
-          : effectiveFormData.cartaCompromisoDescargada || false,
+      cartaCompromisoDescargada: effectiveFormData.cartaCompromisoDescargada || false,
       cartaCompromisoAdjunta: effectiveFormData.cartaCompromisoAdjunta,
       equipamientoSolicitado: effectiveFormData.equipamientoSolicitado || [],
       terminaDiaSiguiente: Boolean(effectiveFormData.terminaDiaSiguiente),
       horarioExtendidoAutorizado: loanScheduleCheck.requiresAuthorization
         ? true
         : Boolean(effectiveFormData.horarioExtendidoAutorizado),
+      claveAutorizacionFeriado: isHolidayAuthorized ? holidayOverrideKey : effectiveFormData.claveAutorizacionFeriado,
       claveAutorizacion: loanScheduleCheck.requiresAuthorization
         ? 'ccd2026'
         : effectiveFormData.claveAutorizacion || '',
       autorizadoPor: loanScheduleCheck.requiresAuthorization
         ? currentUser?.name || currentUser?.username || 'Administrador/Coordinador'
         : effectiveFormData.autorizadoPor || '',
-      version: ((editingReservation as any)?.version || 0) + 1,
+      version: effectiveFormData.version ?? editingReservation?.version ?? 0,
       updatedAt: new Date().toISOString()
     };
 
@@ -916,27 +917,6 @@ export function useReservationSaveHandler({
       isCommitmentLetterEligible(effectiveFormData.tipoActividad, effectiveFormData.tipoPrestamo) ||
       Boolean(effectiveFormData.requiereCartaCompromiso);
 
-    if (isLetterActiveForDownload && descargarCartaAlCrear) {
-      setTimeout(async () => {
-        try {
-          const letterReserva: Reservation = {
-            ...finalReserva,
-            espacio:
-              enableSingleSecondSpace &&
-              effectiveSecondSpace &&
-              effectiveSecondSpace.trim().toUpperCase() !== normalizedSpace.trim().toUpperCase()
-                ? `${normalizedSpace} / ${normalizeSpaceName(effectiveSecondSpace)}`
-                : finalReserva.espacio
-          };
-          await downloadCommitmentLetterPdf(letterReserva, {
-            allReservations,
-            seriesScheduleItems: effectiveSeriesSlotsForLetter
-          });
-        } catch (err) {
-          console.error('Error al descargar automáticamente la carta de compromiso:', err);
-        }
-      }, 50);
-    }
 
     try {
       if (editingReservation && !isDuplicating) {
@@ -969,6 +949,7 @@ export function useReservationSaveHandler({
             terminaDiaSiguiente: finalReserva.terminaDiaSiguiente,
             horarioExtendidoAutorizado: finalReserva.horarioExtendidoAutorizado,
             claveAutorizacion: finalReserva.claveAutorizacion,
+            claveAutorizacionFeriado: finalReserva.claveAutorizacionFeriado,
             autorizadoPor: finalReserva.autorizadoPor,
             serieRecurrente: editingReservation.serieRecurrente,
             recurrenteId: editingReservation.recurrenteId,
@@ -980,7 +961,7 @@ export function useReservationSaveHandler({
             fechaFinRecurrencia: editingReservation.fechaFinRecurrencia,
             editadoPor: currentUser?.name || currentUser?.username || 'Usuario',
             fechaEdicion: format(new Date(), 'dd/MM/yyyy HH:mm:ss'),
-            version: ((editingReservation as any)?.version || 0) + 1,
+            version: effectiveFormData.version ?? editingReservation?.version ?? 0,
             updatedAt: new Date().toISOString()
           };
 
@@ -990,7 +971,7 @@ export function useReservationSaveHandler({
               updatedReservations: [updatedReserva],
               affectedIds: [updatedReserva.id],
               description: `Modificada reserva individual '${updatedReserva.tipoActividad}' de ${updatedReserva.responsable} (${formatDateDDMMYYYY(updatedReserva.fecha)})`
-            })
+            }, forceConflictOverride || allowConflictOverride)
           );
           if (singleResult === false) {
             return;
@@ -1012,7 +993,7 @@ export function useReservationSaveHandler({
             editingReservation.recurrenteId ||
             cleanAffected[0]?.serieRecurrente ||
             cleanAffected[0]?.recurrenteId ||
-            `SER_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+            `SER_${effectiveFormData.id || editingReservation?.id}`.slice(0,128);
 
           const baseRef = cleanAffected[0] || editingReservation;
 
@@ -1114,6 +1095,7 @@ export function useReservationSaveHandler({
                 horarioExtendidoAutorizado: loanScheduleCheck.requiresAuthorization
                   ? true
                   : Boolean(effectiveFormData.horarioExtendidoAutorizado),
+                claveAutorizacionFeriado: finalReserva.claveAutorizacionFeriado,
                 claveAutorizacion: loanScheduleCheck.requiresAuthorization
                   ? 'ccd2026'
                   : effectiveFormData.claveAutorizacion || match.claveAutorizacion || '',
@@ -1129,14 +1111,14 @@ export function useReservationSaveHandler({
                 fechaFinRecurrencia: recurrenceEndDate || finalDates[finalDates.length - 1] || match.fecha,
                 editadoPor: currentUser?.name || currentUser?.username || 'Usuario',
                 fechaEdicion: format(new Date(), 'dd/MM/yyyy HH:mm:ss'),
-                version: ((match as any)?.version || 0) + 1,
+                version: match?.version || 0,
                 updatedAt: new Date().toISOString()
               });
             } else {
               // Brand new occurrence for newly expanded dates/slots in the series
               updatedList.push({
                 ...baseRef,
-                id: `RSV_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+                id: `RSV_${effectiveFormData.id}_${slot.fecha}_${slot.espacio}_${slot.horaInicio}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0,128),
                 fecha: slot.fecha,
                 horaInicio: slot.horaInicio || effectiveFormData.horaInicio || '10:00',
                 horaFin: slot.horaFin || effectiveFormData.horaFin || '11:00',
@@ -1170,6 +1152,7 @@ export function useReservationSaveHandler({
                 horarioExtendidoAutorizado: loanScheduleCheck.requiresAuthorization
                   ? true
                   : Boolean(effectiveFormData.horarioExtendidoAutorizado),
+                claveAutorizacionFeriado: finalReserva.claveAutorizacionFeriado,
                 claveAutorizacion: loanScheduleCheck.requiresAuthorization
                   ? 'ccd2026'
                   : effectiveFormData.claveAutorizacion || '',
@@ -1184,7 +1167,7 @@ export function useReservationSaveHandler({
                 fechaInicioRecurrencia: recurrenceStartDate || finalDates[0] || slot.fecha,
                 fechaFinRecurrencia: recurrenceEndDate || finalDates[finalDates.length - 1] || slot.fecha,
                 estado: 'confirmada',
-                version: 1,
+                version: 0,
                 editadoPor: currentUser?.name || currentUser?.username || 'Usuario',
                 fechaEdicion: format(new Date(), 'dd/MM/yyyy HH:mm:ss'),
                 updatedAt: new Date().toISOString()
@@ -1224,7 +1207,7 @@ export function useReservationSaveHandler({
               affectedIds: updatedList.map((r) => r.id),
               deletedIds: idsToDelete.length > 0 ? idsToDelete : undefined,
               description: `Actualizadas ${updatedList.length} reservas (${scopeLabels[updateScope] || updateScope}) para '${effectiveFormData.tipoActividad || 'Actividad'}' (${effectiveFormData.responsable || 'Responsable'})`
-            })
+            }, forceConflictOverride || allowConflictOverride)
           );
           if (batchResult === false) {
             return;
@@ -1236,21 +1219,48 @@ export function useReservationSaveHandler({
         finalDates.length >= 1 &&
         (!editingReservation || isDuplicating)
       ) {
-        const seriesResult = await Promise.resolve(onSave(finalReserva, true, finalSeriesPayload, false));
+        const seriesResult = await Promise.resolve(onSave(finalReserva, true, finalSeriesPayload, false, undefined, forceConflictOverride || allowConflictOverride));
         if (seriesResult === false) {
           return;
         }
       } else if (enableSingleSecondSpace && (!editingReservation || isDuplicating)) {
-        const doubleResult = await Promise.resolve(onSave(finalReserva, true, finalSeriesPayload, false));
+        const doubleResult = await Promise.resolve(onSave(finalReserva, true, finalSeriesPayload, false, undefined, forceConflictOverride || allowConflictOverride));
         if (doubleResult === false) {
           return;
         }
       } else {
-        const singleResult = await Promise.resolve(onSave(finalReserva, false, undefined, false));
+        const singleResult = await Promise.resolve(onSave(finalReserva, false, undefined, false, undefined, forceConflictOverride || allowConflictOverride));
         if (singleResult === false) {
           return;
         }
       }
+    if (isLetterActiveForDownload && descargarCartaAlCrear) {
+      void (async () => {
+        try {
+          const letterReserva: Reservation = {
+            ...finalReserva,
+            espacio:
+              enableSingleSecondSpace &&
+              effectiveSecondSpace &&
+              effectiveSecondSpace.trim().toUpperCase() !== normalizedSpace.trim().toUpperCase()
+                ? `${normalizedSpace} / ${normalizeSpaceName(effectiveSecondSpace)}`
+                : finalReserva.espacio
+          };
+          await downloadCommitmentLetterPdf(letterReserva, {
+            allReservations,
+            seriesScheduleItems: effectiveSeriesSlotsForLetter
+          });
+          try {
+            const current=getLocalCache().find(r=>r.id===finalReserva.id);
+            if(current)await saveReservation({...current,cartaCompromisoDescargada:true});
+          } catch(error) {console.warn('Carta descargada; metadatos pendientes:',error);toast.warning('La carta se descargó, pero no se pudo actualizar su indicador. La reserva sigue confirmada.');}
+        } catch (err) {
+          console.error('Error al descargar automáticamente la carta de compromiso:', err);
+          toast.warning('Reserva confirmada. No se pudo generar la carta; puedes descargarla desde la reserva.');
+        }
+      })();
+    }
+
       clearDraft();
       onClose();
     } catch (err: any) {
@@ -1258,6 +1268,12 @@ export function useReservationSaveHandler({
       showFormFeedback(
         `⚠️ Error al guardar la reserva: ${err?.message || 'Ocurrió un error inesperado al persistir los datos'}. El formulario se mantendrá abierto para que no pierdas los datos ingresados.`
       );
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+    }
+    } catch (err: any) {
+      showFormFeedback(err?.message || 'No se pudo preparar el guardado. Tus datos se conservaron.', 'error');
     } finally {
       isSubmittingRef.current = false;
       setIsSubmitting(false);

@@ -115,7 +115,7 @@ describe('Reservation Series Expansion & Date Extension Suite', () => {
       espacio: 'GIMNASIO',
       tipoActividad: 'TORNEO EXTERNO',
       responsable: 'Club Deportivo',
-      descripcion: 'Torneo'
+      descripcion: 'Torneo', actividadRecurrente: 'No'
     };
 
     const databaseWithExternal = [...existingSeries, externalReservation];
@@ -132,7 +132,7 @@ describe('Reservation Series Expansion & Date Extension Suite', () => {
         responsable: 'Profesor Carlos',
         actividadRecurrente: 'Sí',
         serieRecurrente: 'SER_CCD_100',
-        recurrenteId: 'SER_CCD_100'
+        recurrenteId: 'SER_CCD_100', descripcion: 'Taller'
       },
       {
         id: 'RSV_EXPANDED_05',
@@ -144,7 +144,7 @@ describe('Reservation Series Expansion & Date Extension Suite', () => {
         responsable: 'Profesor Carlos',
         actividadRecurrente: 'Sí',
         serieRecurrente: 'SER_CCD_100',
-        recurrenteId: 'SER_CCD_100'
+        recurrenteId: 'SER_CCD_100', descripcion: 'Taller'
       }
     ];
 

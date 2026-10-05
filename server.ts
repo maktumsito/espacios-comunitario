@@ -1,3 +1,4 @@
+import { isPurgeableScheduleSlot } from './server/scheduleSlotCleanup';
 import { GmailConnection } from './server/gmailConnection';
 import { registerScheduledCheck, singleFlight } from './server/scheduledDispatch';
 import { selectDispatchReservations, isDispatchLoan as isLoan, isDispatchableReservation } from './src/utils/activityDispatchSelection';
@@ -18,6 +19,8 @@ import {
   setDoc,
   deleteDoc,
   writeBatch,
+  runTransaction,
+  connectFirestoreEmulator,
   Firestore
 } from 'firebase/firestore';
 
@@ -32,6 +35,7 @@ import { formatDateDDMMYYYY } from './src/utils/dateUtils';
 
 // Load environment variables
 dotenv.config();
+const localTestMode = process.env.VITE_LOCAL_TEST_MODE === 'true';
 
 const PORT = 3000;
 const TIMEZONE = 'America/Santiago';
@@ -50,11 +54,13 @@ try {
 // Lazy Firestore instance
 let dbInstance: Firestore | null = null;
 function getServerDb(): Firestore | null {
-  if (!firebaseConfig) return null;
+  if (!firebaseConfig && !localTestMode) return null;
   if (!dbInstance) {
     try {
-      const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-      const databaseId = firebaseConfig.firestoreDatabaseId;
+      const app = localTestMode
+        ? getApps().find(app=>app.name==='local-server-demo') || initializeApp({projectId:'demo-espacios',apiKey:'local-only'},'local-server-demo')
+        : !getApps().length ? initializeApp(firebaseConfig) : getApp();
+      const databaseId = localTestMode ? '(default)' : firebaseConfig.firestoreDatabaseId;
       const settings = {
         ignoreUndefinedProperties: true
       };
@@ -72,6 +78,7 @@ function getServerDb(): Firestore | null {
           dbInstance = getFirestore(app);
         }
       }
+      if (localTestMode) connectFirestoreEmulator(dbInstance!, '127.0.0.1', 8087);
     } catch (e) {
       console.warn('[Server] Error initializing server Firestore:', e);
     }
@@ -175,6 +182,7 @@ interface EmailSendResult {
 
 async function sendEmailServer(options: EmailSendOptions): Promise<EmailSendResult> {
   const { to, subject, bodyText, html, purpose = 'general', attachments = [] } = options;
+  if (localTestMode) return { success: true, mode: 'logged', messageId: `local-simulated-${crypto.randomUUID()}`, timestamp: new Date().toISOString(), attachmentsCount: attachments.length };
   const recipients = Array.isArray(to) ? to.join(', ') : to;
   const nowIso = new Date().toISOString();
 
@@ -746,8 +754,7 @@ export async function purgeExpiredSlotsServer(daysOld = 30): Promise<{ purgedCou
 
     snap.forEach((docSnap) => {
       const id = docSnap.id;
-      const datePart = id.split('_')[0];
-      if (datePart && /^\d{4}-\d{2}-\d{2}$/.test(datePart) && datePart < cutoffDateStr) {
+      if (isPurgeableScheduleSlot(id, docSnap.data(), cutoffDateStr)) {
         expiredDocs.push(id);
       }
     });
@@ -756,21 +763,18 @@ export async function purgeExpiredSlotsServer(daysOld = 30): Promise<{ purgedCou
       return { purgedCount: 0, message: 'No hay slots expirados pendientes de limpieza.' };
     }
 
-    const FIRESTORE_MAX_BATCH_SIZE = 450;
-    for (let i = 0; i < expiredDocs.length; i += FIRESTORE_MAX_BATCH_SIZE) {
-      const chunk = expiredDocs.slice(i, i + FIRESTORE_MAX_BATCH_SIZE);
-      const batch = writeBatch(db);
-      chunk.forEach((slotId) => {
-        batch.delete(doc(db, 'schedule_slots', slotId));
+    let purgedCount = 0;
+    for (let i = 0; i < expiredDocs.length; i += 400) {
+      const chunk = expiredDocs.slice(i, i + 400);
+      purgedCount += await runTransaction(db, async tx => {
+        const snapshots = await Promise.all(chunk.map(id => tx.get(doc(db, 'schedule_slots', id))));
+        const eligible = snapshots.filter(snapshot => snapshot.exists() && isPurgeableScheduleSlot(snapshot.id, snapshot.data()!, cutoffDateStr));
+        eligible.forEach(snapshot => tx.delete(snapshot.ref));
+        return eligible.length;
       });
-      await batch.commit();
     }
+    return { purgedCount, message: `Se purgaron ${purgedCount} índices vacíos anteriores al ${cutoffDateStr}.` };
 
-    console.log(`[Server Cleanup] Purgados con éxito ${expiredDocs.length} slots de concurrencia (< ${cutoffDateStr})`);
-    return {
-      purgedCount: expiredDocs.length,
-      message: `Se purgaron ${expiredDocs.length} slots de concurrencia antiguos anteriores al ${cutoffDateStr}.`
-    };
   } catch (err: any) {
     console.warn('[Server Cleanup] Error en purga automática de slots:', err);
     return { purgedCount: 0, message: `Error en purga: ${err?.message || String(err)}` };
@@ -831,6 +835,7 @@ async function startServer() {
   });
 
   app.get('/api/email/status', async (req, res) => {
+    if (localTestMode) { res.json({active:true,provider:'local_simulated',gmailConnected:false,smtpConfigured:false,resendConfigured:false}); return; }
     const santiago = getSantiagoTime();
     const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || 'cristianshute@gmail.com';
     const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASSWORD;
@@ -933,7 +938,7 @@ async function startServer() {
     }
   }
 
-  gmailConnection.register(app, requireAuth);
+  if (!localTestMode) gmailConnection.register(app, requireAuth);
 
   app.post('/api/email/send', requireAuth, async (req, res) => {
     try {

@@ -122,9 +122,10 @@ interface ReservationModalProps {
     generateSeries?: boolean,
     seriesDates?: (string | SeriesItemSlot)[],
     updateWholeSeries?: boolean,
-    batchUpdateInfo?: BatchUpdateInfo
+    batchUpdateInfo?: BatchUpdateInfo,
+    allowConflictOverride?: boolean
   ) => void | boolean | Promise<void | boolean>;
-  onDelete?: (id: string, isSeries?: boolean, seriesId?: string) => void;
+  onDelete?: (id: string, isSeries?: boolean, seriesId?: string) => void | Promise<void>;
   onRequestDelete?: (reserva: Reservation) => void;
   editingReservation?: Reservation | null;
   isDuplicating?: boolean;
@@ -353,6 +354,14 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     }
   }, [editingReservation]);
 
+  useEffect(() => {
+    const conflict = (event: Event) => {
+      if ((event as CustomEvent).detail?.id === editingReservation?.id) setDismissedConcurrency(false);
+    };
+    window.addEventListener('reservation-version-conflict', conflict);
+    return () => window.removeEventListener('reservation-version-conflict', conflict);
+  }, [editingReservation?.id]);
+
   // Non-blocking inline feedback system to replace blocking alert() calls (D4 & D9)
   const [formFeedback, setFormFeedback] = useState<{ message: string; type: 'error' | 'warning' | 'info' | 'success' } | null>(null);
 
@@ -361,10 +370,10 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     title: string;
     message: React.ReactNode;
     confirmLabel: string;
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
     secondaryAction?: {
       label: string;
-      onClick: () => void;
+      onClick: () => void | Promise<void>;
       className?: string;
     };
   }>({
@@ -395,7 +404,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
       return { type: 'deleted' as const, message: 'Esta reserva fue eliminada en otra sesión.' };
     }
     const initialUpdatedAt = initialEditingSnapshot.current.updatedAt;
-    if (currentInStore.updatedAt && initialUpdatedAt && currentInStore.updatedAt > initialUpdatedAt) {
+    if ((currentInStore.version || 0) > (initialEditingSnapshot.current.version || 0) || (currentInStore.updatedAt && initialUpdatedAt && currentInStore.updatedAt > initialUpdatedAt)) {
       return {
         type: 'modified' as const,
         editor: currentInStore.editadoPor || 'otro usuario',
@@ -498,6 +507,21 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     if (draft.singleSecondEndTime) setSingleSecondEndTime(draft.singleSecondEndTime);
     if (draft.descargarCartaAlCrear !== undefined) setDescargarCartaAlCrear(draft.descargarCartaAlCrear);
 
+    if (draft.settings) {
+      prevHolidayDateRef.current = draft.formData.fecha || '';
+      prevHolidaySpecificRef.current = (draft.specificDates || []).join(',');
+      prevHolidayPatternRef.current = `${draft.recurrenceStartDate}_${draft.recurrenceEndDate}_${draft.selectedDays.join(',')}`;
+      setHolidayOverrideKey(draft.settings.holidayOverrideKey);
+      setExtendedAuthKey(draft.settings.extendedAuthKey);
+      setIncludeHolidaysInSeries(draft.settings.includeHolidaysInSeries);
+      setGenerateFullSeries(draft.settings.generateFullSeries);
+    }
+    if (draft.editScope) {
+      setUpdateScope(draft.editScope.updateScope);
+      setRangeStartDate(draft.editScope.rangeStartDate);
+      setRangeEndDate(draft.editScope.rangeEndDate);
+      setSelectedOccurrenceIds(new Set(draft.editScope.selectedOccurrenceIds));
+    }
     showFormFeedback('✓ Progreso recuperado exitosamente desde el borrador guardado automáticamente.', 'success');
   }, []);
 
@@ -511,6 +535,8 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     discardDraft,
     clearDraft
   } = useReservationAutosave({
+    editScope: useMemo(()=>({updateScope,rangeStartDate,rangeEndDate,selectedOccurrenceIds:[...selectedOccurrenceIds]}),[updateScope,rangeStartDate,rangeEndDate,selectedOccurrenceIds]),
+    settings: useMemo(()=>({holidayOverrideKey,extendedAuthKey,includeHolidaysInSeries,generateFullSeries}),[holidayOverrideKey,extendedAuthKey,includeHolidaysInSeries,generateFullSeries]),
     isOpen,
     editingReservation,
     isDuplicating,
@@ -1277,6 +1303,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
     specificHolidayAnalysis,
     includeHolidaysInSeries,
     isHolidayAuthorized,
+    holidayOverrideKey,
     patternHolidayAnalysis,
     generatedDates,
     recurrenceStartDate,
@@ -1365,19 +1392,19 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
           secondaryAction: {
             label: 'Solo Esta Fecha',
             className: 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-semibold',
-            onClick: () => {
+            onClick: async () => {
+              await onDelete(editingReservation.id, false);
               setDeleteConfirmModal((prev) => ({ ...prev, isOpen: false }));
-              onDelete(editingReservation.id, false);
               onClose();
             }
           },
-          onConfirm: () => {
-            setDeleteConfirmModal((prev) => ({ ...prev, isOpen: false }));
-            onDelete(
+          onConfirm: async () => {
+            await onDelete(
               editingReservation.id,
               true,
               editingReservation.serieRecurrente || editingReservation.recurrenteId
             );
+            setDeleteConfirmModal((prev) => ({ ...prev, isOpen: false }));
             onClose();
           }
         });
@@ -1387,9 +1414,9 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
           title: 'Confirmar Eliminación',
           message: '¿Estás seguro de que deseas eliminar esta reserva?',
           confirmLabel: 'Eliminar Reserva',
-          onConfirm: () => {
+          onConfirm: async () => {
+            await onDelete(editingReservation.id, false);
             setDeleteConfirmModal((prev) => ({ ...prev, isOpen: false }));
-            onDelete(editingReservation.id, false);
             onClose();
           }
         });
@@ -1427,11 +1454,12 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
           editingReservation={editingReservation}
           isWizardMode={isWizardMode}
           setIsWizardMode={setIsWizardMode}
-          onClose={onClose}
+          onClose={() => { if (!isSubmittingRef.current) onClose(); }}
         />
 
         {/* Form Body */}
         <form id="reservation-modal-form-body" onSubmit={handleSubmit} noValidate className="p-6 space-y-5 max-h-[82vh] overflow-y-auto text-xs">
+          <fieldset disabled={isSubmitting} className="contents">
           {/* Notification & Context Alerts */}
           <ReservationModalAlerts
             hasDraft={hasDraft}
@@ -1452,7 +1480,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
                   updatedAt: concurrencyConflict.currentReservation.updatedAt,
                   version: (concurrencyConflict.currentReservation as any)?.version
                 };
-                setDismissedConcurrency(true);
+                setDismissedConcurrency(false);
               }
             }}
             onDismissConcurrency={() => setDismissedConcurrency(true)}
@@ -1773,7 +1801,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
             wizardStep={wizardStep}
             setWizardStep={setWizardStep}
             scrollToModalTop={scrollToModalTop}
-            onClose={onClose}
+            onClose={() => { if (!isSubmittingRef.current) onClose(); }}
             validateStep1={validateStep1Activity}
             validateStep2={validateStep2DateTime}
             validateStep3={validateStep3Applicant}
@@ -1796,6 +1824,7 @@ export const ReservationModal: React.FC<ReservationModalProps> = ({
             isStep3Completed={isStep3ApplicantCompleted}
             isStep4Completed={isStep4ResourcesCompleted}
           />
+          </fieldset>
         </form>
       </div>
 

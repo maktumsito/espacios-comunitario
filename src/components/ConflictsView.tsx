@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { usePagination } from '../hooks/usePagination';
+import { PaginationControls } from './common/PaginationControls';
 import { Reservation, SpaceBlock } from '../types';
 import { detectAllConflicts, detectReservationsBlockedByMaintenance } from '../utils/conflictDetector';
 import { SPACES_LIST } from '../data/spacesData';
@@ -36,9 +38,11 @@ export const ConflictsView: React.FC<ConflictsViewProps> = ({
   const [isCleaning, setIsCleaning] = useState(false);
   const [cleanedMessage, setCleanedMessage] = useState<string | null>(null);
   const [expandedSuggestions, setExpandedSuggestions] = useState<Record<string, boolean>>({});
-  const conflicts = detectAllConflicts(reservations);
-  const maintenanceCollisions = spaceBlocks ? detectReservationsBlockedByMaintenance(reservations, spaceBlocks) : [];
+  const conflicts = useMemo(()=>detectAllConflicts(reservations),[reservations]);
+  const maintenanceCollisions = useMemo(()=>spaceBlocks ? detectReservationsBlockedByMaintenance(reservations, spaceBlocks) : [],[reservations,spaceBlocks]);
 
+  const pagination = usePagination(conflicts, { initialPageSize: 20 });
+  const maintenancePagination = usePagination(maintenanceCollisions, { initialPageSize: 20 });
   const toggleSuggestions = (key: string) => {
     setExpandedSuggestions(prev => ({
       ...prev,
@@ -131,7 +135,8 @@ export const ConflictsView: React.FC<ConflictsViewProps> = ({
           </div>
 
           <div className="space-y-3">
-            {maintenanceCollisions.map((mc, idx) => {
+            <PaginationControls {...maintenancePagination} onPageChange={maintenancePagination.setCurrentPage} itemLabel="bloqueos" />
+            {maintenancePagination.paginatedItems.map((mc, idx) => {
               const res = mc.reserva as Reservation;
               return (
                 <div
@@ -196,7 +201,8 @@ export const ConflictsView: React.FC<ConflictsViewProps> = ({
         </div>
       ) : (
         <div className="space-y-4">
-          {conflicts.map((conflict, idx) => {
+          <PaginationControls {...pagination} onPageChange={pagination.setCurrentPage} itemLabel="topamientos" />
+          {pagination.paginatedItems.map((conflict, idx) => {
             const spaceColor = getSpaceColor(conflict.espacio);
             const isRecA = conflict.reservaA.actividadRecurrente === 'Sí' || Boolean(conflict.reservaA.serieRecurrente || conflict.reservaA.recurrenteId);
             const isRecB = conflict.reservaB.actividadRecurrente === 'Sí' || Boolean(conflict.reservaB.serieRecurrente || conflict.reservaB.recurrenteId);
